@@ -40,11 +40,12 @@ const upload = multer({
 export async function registerRoutes(app: Express): Promise<Server> {
   // Sample CSV download route
   app.get("/api/products/sample-csv", (req, res) => {
+    console.log('Generating sample CSV template...');
+
     const sampleData = [
       {
         brand: "Apple",
         model: "MacBook Pro",
-        category: "laptop",
         condition: "new",
         costPrice: "1999.99",
         specifications: "16GB RAM, 512GB SSD, M2 Pro chip",
@@ -52,29 +53,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         prodHealth: "working",
         prodStatus: "available",
         orderStatus: "INVENTORY",
+        productType: "laptop",
         createdBy: "ADS0001"
       },
       {
         brand: "Dell",
         model: "XPS 13",
-        category: "laptop",
         condition: "refurbished",
         costPrice: "699.99",
         specifications: "8GB RAM, 256GB SSD, Intel i5",
         prodId: "DXPS001",
         prodHealth: "working",
         prodStatus: "available",
-        orderType: "INVENTORY",
+        orderStatus: "INVENTORY",
+        productType: "laptop",
         createdBy: "ADS0001"
       }
     ];
 
-    const csvContent = [
-      'brand,model,condition,costPrice,specifications,prodId,prodHealth,prodStatus,orderType,productType,createdBy',
-      ...sampleData.map(row =>
-        `"${row.brand}","${row.model}","${row.condition}","${row.costPrice}","${row.specifications}","${row.prodId}","${row.prodHealth}","${row.prodStatus}","${row.orderStatus}","laptop","${row.createdBy}"`
-      )
-    ].join('\n');
+    console.log('Sample data:', JSON.stringify(sampleData, null, 2));
+
+    const headers = 'brand,model,condition,costPrice,specifications,prodId,prodHealth,prodStatus,orderStatus,productType,createdBy';
+    console.log('CSV Headers:', headers);
+
+    const csvRows = sampleData.map((row, index) => {
+      const csvRow = `"${row.brand}","${row.model}","${row.condition}","${row.costPrice}","${row.specifications}","${row.prodId}","${row.prodHealth}","${row.prodStatus}","${row.orderStatus}","${row.productType}","${row.createdBy}"`;
+      console.log(`Row ${index + 1} CSV:`, csvRow);
+      return csvRow;
+    });
+
+    const csvContent = [headers, ...csvRows].join('\n');
+    console.log('Full CSV content length:', csvContent.length);
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="sample_products.csv"');
