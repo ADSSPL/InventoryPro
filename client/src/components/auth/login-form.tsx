@@ -51,7 +51,7 @@ export default function LoginForm({ onLoginSuccess }: LoginFormProps) {
             <Package className="h-8 w-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">InventoryPro</h1>
-          <p className="text-gray-600">Sign in to your account</p>
+          <p className="text-gray-600">Login in to your account</p>
         </div>
 
         {/* Login Card */}
@@ -59,7 +59,7 @@ export default function LoginForm({ onLoginSuccess }: LoginFormProps) {
           <CardHeader className="space-y-1">
             <CardTitle className="text-2xl text-center">Welcome back</CardTitle>
             <CardDescription className="text-center">
-              Enter your credentials to access your inventory management system
+              Please enter your credentials.
             </CardDescription>
           </CardHeader>
           <CardContent>

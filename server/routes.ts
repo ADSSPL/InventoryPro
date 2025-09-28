@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import {
   insertProductSchema,
+  updateProductSchema,
   insertClientSchema,
   insertProductDateEventSchema,
   baseInsertOrderSchema,
@@ -134,7 +135,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             prodStatus: row.prodStatus || row.prod_status || 'available',
             lastAuditDate: row.lastAuditDate || row.last_audit_date || null,
             auditStatus: row.auditStatus || row.audit_status || null,
-            returnDate: row.returnDate || row.return_date || null,
             maintenanceDate: row.maintenanceDate || row.maintenance_date || null,
             maintenanceStatus: row.maintenanceStatus || row.maintenance_status || null,
             orderType: row.orderType || row.order_type || row.orderStatus || row.order_status || 'INVENTORY',
@@ -268,18 +268,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/products/adsId/:adsId", async (req, res) => {
+    try {
+      const adsId = req.params.adsId;
+      const product = await storage.getProductByAdsId(adsId);
+      if (!product) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+      res.json(product);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch product" });
+    }
+  });
+
   app.post("/api/products", async (req, res) => {
     try {
       // Preprocess the data to ensure correct types
       const rawData = req.body;
       const processedData = {
         ...rawData,
-        // Ensure costPrice is valid decimal string
+        // Ensure costPrice is valid number
         costPrice: (() => {
           const costPrice = rawData.costPrice || rawData.cost;
-          if (typeof costPrice === 'string') return costPrice;
-          if (typeof costPrice === 'number') return costPrice.toString();
-          return '0';
+          if (typeof costPrice === 'string') return parseFloat(costPrice) || 0;
+          if (typeof costPrice === 'number') return costPrice;
+          return 0;
         })(),
         createdBy: rawData.createdBy || null,
         prodId: rawData.prodId || null,
@@ -287,7 +300,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         prodStatus: rawData.prodStatus || 'available',
         lastAuditDate: rawData.lastAuditDate || null,
         auditStatus: rawData.auditStatus || null,
-        returnDate: rawData.returnDate || null,
         maintenanceDate: rawData.maintenanceDate || null,
         maintenanceStatus: rawData.maintenanceStatus || null,
         orderType: rawData.orderType || rawData.orderStatus || 'INVENTORY',
@@ -326,23 +338,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const adsId = req.params.adsId;
 
+      // Extract lastModifiedBy before schema validation since it's not in the schema
+      const lastModifiedBy = req.body.lastModifiedBy;
+
       // Preprocess the data to ensure correct types
       const rawData = req.body;
       const processedData = {
         ...rawData,
         costPrice: rawData.costPrice !== undefined ? (() => {
           const costPrice = rawData.costPrice;
-          if (typeof costPrice === 'string') return costPrice;
-          if (typeof costPrice === 'number') return costPrice.toString();
+          if (typeof costPrice === 'string') return parseFloat(costPrice) || 0;
+          if (typeof costPrice === 'number') return costPrice;
           return undefined;
         })() : undefined,
-        createdBy: rawData.createdBy || undefined,
         prodId: rawData.prodId || undefined,
         prodHealth: rawData.prodHealth || undefined,
         prodStatus: rawData.prodStatus || undefined,
         lastAuditDate: rawData.lastAuditDate || undefined,
         auditStatus: rawData.auditStatus || undefined,
-        returnDate: rawData.returnDate || undefined,
         maintenanceDate: rawData.maintenanceDate || undefined,
         maintenanceStatus: rawData.maintenanceStatus || undefined,
         orderType: rawData.orderType || rawData.orderStatus || undefined,
@@ -350,9 +363,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log('PUT Raw data:', rawData);
       console.log('PUT Processed data:', processedData);
+      console.log('PUT lastModifiedBy:', lastModifiedBy);
 
-      const productData = insertProductSchema.partial().parse(processedData);
-      const product = await storage.updateProductByAdsId(adsId, productData);
+      const productData = updateProductSchema.partial().parse(processedData);
+      // Add lastModifiedBy back to the product data for storage
+      const productDataWithMeta = { ...productData, lastModifiedBy };
+      
+      console.log('PUT productDataWithMeta:', productDataWithMeta);
+      const product = await storage.updateProductByAdsId(adsId, productDataWithMeta);
       if (!product) {
         return res.status(404).json({ message: "Product not found" });
       }
@@ -378,6 +396,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete product" });
+    }
+  });
+
+  // Get product audit trail
+  app.get("/api/products/:adsId/history", async (req, res) => {
+    try {
+      const adsId = req.params.adsId;
+      console.log('Fetching history for adsId:', adsId);
+      
+      const product = await storage.getProductByAdsId(adsId);
+      if (!product) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+
+      console.log('Raw audit trail from DB:', product.auditTrail);
+      console.log('Audit trail type:', typeof product.auditTrail);
+
+      // Parse audit trail JSON from database string
+      let auditTrail = [];
+      try {
+        if (typeof product.auditTrail === 'string') {
+          auditTrail = JSON.parse(product.auditTrail);
+        } else if (Array.isArray(product.auditTrail)) {
+          auditTrail = product.auditTrail;
+        }
+      } catch (parseError) {
+        console.error('Error parsing audit trail JSON:', parseError);
+        auditTrail = [];
+      }
+
+      console.log('Parsed audit trail:', auditTrail);
+      console.log('Audit trail length:', auditTrail.length);
+
+      const response = {
+        adsId: product.adsId,
+        brand: product.brand,
+        model: product.model,
+        auditTrail
+      };
+
+      console.log('Sending response:', response);
+      res.json(response);
+    } catch (error) {
+      console.error('Error fetching product history:', error);
+      res.status(500).json({ message: "Failed to fetch product history" });
     }
   });
 
@@ -701,6 +764,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (err) return res.status(500).json({ error: "Logout failed" });
       res.json({ message: "Logged out" });
     });
+  });
+
+  // Get all users (for mapping employee IDs to usernames)
+  app.get("/api/users", async (req, res) => {
+    try {
+      const users = await storage.getUsers();
+      // Return only necessary fields for security
+      const safeUsers = users.map(user => ({
+        id: user.id,
+        username: user.username,
+        employeeId: user.employeeId,
+        role: user.role
+      }));
+      res.json(safeUsers);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
   });
 
   // Check auth

@@ -36,8 +36,21 @@ passport.deserializeUser(async (id: number, done) => {
       `SELECT * FROM users WHERE id = $1`,
       [id]
     );
-    const user = res.rows[0];
-    done(null, user || false);
+    const row = res.rows[0];
+    if (!row) return done(null, false);
+
+    // Map database fields to camelCase
+    const user = {
+      id: row.id,
+      username: row.username,
+      password: row.password,
+      role: row.role,
+      employeeId: row.employee_id,
+      dateOfCreation: row.date_of_creation,
+      isActive: row.is_active
+    };
+
+    done(null, user);
   } catch (err) {
     done(err);
   }

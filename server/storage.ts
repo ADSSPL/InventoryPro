@@ -4,11 +4,15 @@ import {
   ProductDateEvent, InsertProductDateEvent,
   Order, InsertOrder,
   SalesBuy, InsertSalesBuy,
-  SalesRent, InsertSalesRent
+  SalesRent, InsertSalesRent,
+  User
 } from "@shared/schema";
 import pool from "./../db";
 
 export interface IStorage {
+  // Users
+  getUsers(): Promise<User[]>;
+
   // Products
   getProducts(): Promise<Product[]>;
   getProduct(id: number): Promise<Product | undefined>;
@@ -69,6 +73,20 @@ export interface IStorage {
 
 export class PostgresStorage implements IStorage {
 
+  // Users
+  async getUsers(): Promise<User[]> {
+    const res = await pool.query("SELECT * FROM users WHERE is_active = TRUE ORDER BY username");
+    return res.rows.map(row => ({
+      id: row.id,
+      username: row.username,
+      password: row.password,
+      role: row.role,
+      employeeId: row.employee_id,
+      dateOfCreation: row.date_of_creation,
+      isActive: row.is_active
+    }));
+  }
+
   // Products
   async getProducts(): Promise<Product[]> {
     const res = await pool.query("SELECT * FROM products WHERE is_deleted = FALSE");
@@ -86,12 +104,12 @@ export class PostgresStorage implements IStorage {
       prodStatus: row.prod_status,
       lastAuditDate: row.last_audit_date,
       auditStatus: row.audit_status,
-      returnDate: row.return_date,
       maintenanceDate: row.maintenance_date,
       maintenanceStatus: row.maintenance_status,
       orderStatus: row.order_status,
       productType: row.prod_type,
       createdBy: row.created_by,
+      createdAt: row.created_at,
       // Audit and soft delete fields
       auditTrail: row.audit_trail,
       lastModifiedBy: row.last_modified_by,
@@ -121,17 +139,40 @@ export class PostgresStorage implements IStorage {
     const adsId = nextId.toString().padStart(11, '0');
     const referenceNumber = `ADS${adsId}`;
 
-    // Initialize audit trail
+    // Initialize audit trail with complete product snapshot
     const auditTrail = JSON.stringify([{
-      action: 'created',
+      productState: {
+        adsId,
+        referenceNumber,
+        brand: product.brand,
+        model: product.model,
+        condition: product.condition,
+        costPrice: product.costPrice,
+        specifications: product.specifications,
+        prodId: product.prodId,
+        prodHealth: product.prodHealth,
+        prodStatus: product.prodStatus,
+        lastAuditDate: product.lastAuditDate,
+        auditStatus: product.auditStatus,
+        maintenanceDate: product.maintenanceDate,
+        maintenanceStatus: product.maintenanceStatus,
+        orderStatus: product.orderStatus,
+        productType: product.productType,
+        createdBy: product.createdBy,
+        lastModifiedBy: product.createdBy,
+        lastModifiedAt: new Date().toISOString(),
+        isDeleted: false,
+        deletedAt: null,
+        deletedBy: null
+      },
+      updatedBy: product.createdBy || 'SYSTEM',
       timestamp: new Date().toISOString(),
-      user: product.createdBy || 'system',
-      details: 'Product created'
+      action: 'CREATED'
     }]);
 
     const res = await pool.query(
       `INSERT INTO products
-        (ads_id, reference_number, brand, model, condition, cost, specifications, prod_id, prod_health, prod_status, last_audit_date, audit_status, return_date, maintenance_date, maintenance_status, order_status, prod_type, created_by, audit_trail, last_modified_by, last_modified_at, is_deleted)
+        (ads_id, reference_number, brand, model, condition, cost, specifications, prod_id, prod_health, prod_status, last_audit_date, audit_status, maintenance_date, maintenance_status, order_status, prod_type, created_by, created_at, audit_trail, last_modified_by, last_modified_at, is_deleted)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
        RETURNING *`,
       [
@@ -147,12 +188,12 @@ export class PostgresStorage implements IStorage {
         product.prodStatus ?? 'available',
         product.lastAuditDate ?? null,
         product.auditStatus ?? null,
-        product.returnDate ?? null,
         product.maintenanceDate ?? null,
         product.maintenanceStatus ?? null,
         product.orderStatus ?? 'INVENTORY',
         product.productType ?? null,
         product.createdBy ?? null,
+        new Date().toISOString(), // createdAt
         auditTrail,
         product.createdBy ?? null,
         new Date().toISOString(),
@@ -174,12 +215,12 @@ export class PostgresStorage implements IStorage {
       prodStatus: row.prod_status,
       lastAuditDate: row.last_audit_date,
       auditStatus: row.audit_status,
-      returnDate: row.return_date,
       maintenanceDate: row.maintenance_date,
       maintenanceStatus: row.maintenance_status,
       orderStatus: row.order_status,
       productType: row.prod_type,
       createdBy: row.created_by,
+      createdAt: row.created_at,
       auditTrail: row.audit_trail,
       lastModifiedBy: row.last_modified_by,
       lastModifiedAt: row.last_modified_at,
@@ -215,16 +256,55 @@ export class PostgresStorage implements IStorage {
         );
 
         if (existingProduct.rows.length > 0) {
-          // Update existing product
+          // Update existing product with audit trail
           const existing = existingProduct.rows[0];
+          const timestamp = new Date().toISOString();
+          
+          // Build current audit trail
+          const currentAuditTrail = Array.isArray(existing.audit_trail) ? existing.audit_trail : [];
+          
+          // Create updated product state
+          const updatedProductState = {
+            adsId: existing.ads_id,
+            referenceNumber: existing.reference_number,
+            brand: product.brand,
+            model: product.model,
+            condition: product.condition,
+            costPrice: product.costPrice,
+            specifications: product.specifications ?? null,
+            prodId: product.prodId ?? null,
+            prodHealth: product.prodHealth ?? 'working',
+            prodStatus: product.prodStatus ?? 'available',
+            lastAuditDate: product.lastAuditDate ?? null,
+            auditStatus: product.auditStatus ?? null,
+            maintenanceDate: product.maintenanceDate ?? null,
+            maintenanceStatus: product.maintenanceStatus ?? null,
+            orderStatus: product.orderStatus ?? 'INVENTORY',
+            productType: product.productType ?? null,
+            createdBy: existing.created_by,
+            lastModifiedBy: product.createdBy ?? null,
+            lastModifiedAt: timestamp,
+            isDeleted: false,
+            deletedAt: null,
+            deletedBy: null
+          };
+
+          // Add audit trail entry
+          const auditTrailUpdate = JSON.stringify([...currentAuditTrail, {
+            productState: updatedProductState,
+            updatedBy: product.createdBy || 'SYSTEM',
+            timestamp,
+            action: 'UPDATED'
+          }]);
+
           const res = await client.query(
             `UPDATE products SET
               brand = $1, model = $2, condition = $3, cost = $4,
               specifications = $5, prod_id = $6, prod_health = $7,
               prod_status = $8, last_audit_date = $9, audit_status = $10,
-              return_date = $11, maintenance_date = $12, maintenance_status = $13,
-              order_status = $14, prod_type = $15, last_modified_by = $16,
-              last_modified_at = $17
+              maintenance_date = $11, maintenance_status = $12,
+              order_status = $13, prod_type = $14, last_modified_by = $15,
+              last_modified_at = $16, audit_trail = $17
              WHERE reference_number = $18
              RETURNING *`,
             [
@@ -238,13 +318,13 @@ export class PostgresStorage implements IStorage {
               product.prodStatus ?? 'available',
               product.lastAuditDate ?? null,
               product.auditStatus ?? null,
-              product.returnDate ?? null,
               product.maintenanceDate ?? null,
               product.maintenanceStatus ?? null,
               product.orderStatus ?? 'INVENTORY',
               product.productType ?? null,
               product.createdBy ?? null,
-              new Date().toISOString(),
+              timestamp,
+              auditTrailUpdate,
               `ADS${product.brand}${product.model}`
             ]
           );
@@ -263,12 +343,12 @@ export class PostgresStorage implements IStorage {
             prodStatus: row.prod_status,
             lastAuditDate: row.last_audit_date,
             auditStatus: row.audit_status,
-            returnDate: row.return_date,
             maintenanceDate: row.maintenance_date,
             maintenanceStatus: row.maintenance_status,
             orderStatus: row.order_status,
             productType: row.prod_type,
             createdBy: row.created_by,
+            createdAt: row.created_at,
             auditTrail: row.audit_trail,
             lastModifiedBy: row.last_modified_by,
             lastModifiedAt: row.last_modified_at,
@@ -302,7 +382,7 @@ export class PostgresStorage implements IStorage {
 
           const res = await client.query(
             `INSERT INTO products
-              (ads_id, reference_number, brand, model, condition, cost, specifications, prod_id, prod_health, prod_status, last_audit_date, audit_status, return_date, maintenance_date, maintenance_status, order_status, prod_type, created_by, audit_trail, last_modified_by, last_modified_at, is_deleted)
+              (ads_id, reference_number, brand, model, condition, cost, specifications, prod_id, prod_health, prod_status, last_audit_date, audit_status, maintenance_date, maintenance_status, order_status, prod_type, created_by, created_at, audit_trail, last_modified_by, last_modified_at, is_deleted)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
              RETURNING *`,
             [
@@ -318,17 +398,40 @@ export class PostgresStorage implements IStorage {
               product.prodStatus ?? 'available',
               product.lastAuditDate ?? null,
               product.auditStatus ?? null,
-              product.returnDate ?? null,
               product.maintenanceDate ?? null,
               product.maintenanceStatus ?? null,
               product.orderStatus ?? 'INVENTORY',
               product.productType ?? null,
               product.createdBy ?? null,
+              new Date().toISOString(), // createdAt
               JSON.stringify([{
-                action: 'created',
+                productState: {
+                  adsId,
+                  referenceNumber,
+                  brand: product.brand,
+                  model: product.model,
+                  condition: product.condition,
+                  costPrice: product.costPrice,
+                  specifications: product.specifications ?? null,
+                  prodId: product.prodId ?? null,
+                  prodHealth: product.prodHealth ?? 'working',
+                  prodStatus: product.prodStatus ?? 'available',
+                  lastAuditDate: product.lastAuditDate ?? null,
+                  auditStatus: product.auditStatus ?? null,
+                  maintenanceDate: product.maintenanceDate ?? null,
+                  maintenanceStatus: product.maintenanceStatus ?? null,
+                  orderStatus: product.orderStatus ?? 'INVENTORY',
+                  productType: product.productType ?? null,
+                  createdBy: product.createdBy ?? null,
+                  lastModifiedBy: product.createdBy ?? null,
+                  lastModifiedAt: new Date().toISOString(),
+                  isDeleted: false,
+                  deletedAt: null,
+                  deletedBy: null
+                },
+                updatedBy: product.createdBy || 'SYSTEM',
                 timestamp: new Date().toISOString(),
-                user: product.createdBy || 'system',
-                details: 'Product created via bulk upload'
+                action: 'CREATED'
               }]),
               product.createdBy ?? null,
               new Date().toISOString(),
@@ -350,12 +453,12 @@ export class PostgresStorage implements IStorage {
             prodStatus: row.prod_status,
             lastAuditDate: row.last_audit_date,
             auditStatus: row.audit_status,
-            returnDate: row.return_date,
             maintenanceDate: row.maintenance_date,
             maintenanceStatus: row.maintenance_status,
             orderStatus: row.order_status,
             productType: row.prod_type,
             createdBy: row.created_by,
+            createdAt: row.created_at,
             auditTrail: row.audit_trail,
             lastModifiedBy: row.last_modified_by,
             lastModifiedAt: row.last_modified_at,
@@ -452,12 +555,12 @@ export class PostgresStorage implements IStorage {
       prodStatus: row.prod_status,
       lastAuditDate: row.last_audit_date,
       auditStatus: row.audit_status,
-      returnDate: row.return_date,
       maintenanceDate: row.maintenance_date,
       maintenanceStatus: row.maintenance_status,
       orderStatus: row.order_status,
       productType: row.prod_type,
       createdBy: row.created_by,
+      createdAt: row.created_at,
       auditTrail: row.audit_trail,
       lastModifiedBy: row.last_modified_by,
       lastModifiedAt: row.last_modified_at,
@@ -468,6 +571,42 @@ export class PostgresStorage implements IStorage {
   }
 
   async updateProductByAdsId(adsId: string, product: Partial<InsertProduct>): Promise<Product | undefined> {
+    // First get the current product to build audit trail
+    const currentProduct = await this.getProductByAdsId(adsId);
+    if (!currentProduct) return undefined;
+
+    // Extract lastModifiedBy from the product data (it might be passed separately)
+    const lastModifiedBy = (product as any).lastModifiedBy || 'system';
+    const timestamp = new Date().toISOString();
+
+    // Always create audit trail for any update (even if no product fields changed)
+    const currentAuditTrail = typeof currentProduct.auditTrail === 'string'
+      ? JSON.parse(currentProduct.auditTrail)
+      : Array.isArray(currentProduct.auditTrail)
+        ? currentProduct.auditTrail
+        : [];
+
+    // Create new product state after applying changes
+    const updatedProductState = { ...currentProduct };
+    for (const [key, value] of Object.entries(product)) {
+      if (key !== "lastModifiedBy" && value !== undefined) {
+        (updatedProductState as any)[key] = value;
+      }
+    }
+    // Update lastModifiedAt and lastModifiedBy
+    (updatedProductState as any).lastModifiedAt = timestamp;
+    (updatedProductState as any).lastModifiedBy = lastModifiedBy;
+
+    // Always create snapshot for updates
+    const snapshot = {
+      productState: updatedProductState,
+      updatedBy: lastModifiedBy,
+      timestamp,
+      action: 'UPDATED'
+    };
+
+    const auditTrailUpdate = JSON.stringify([...currentAuditTrail, snapshot]);
+
     // Build dynamic SET clause
     const fields = [];
     const values = [];
@@ -494,9 +633,6 @@ export class PostgresStorage implements IStorage {
       } else if (key === "auditStatus") {
         fields.push(`audit_status = $${idx++}`);
         values.push(value);
-      } else if (key === "returnDate") {
-        fields.push(`return_date = $${idx++}`);
-        values.push(value);
       } else if (key === "maintenanceDate") {
         fields.push(`maintenance_date = $${idx++}`);
         values.push(value);
@@ -518,11 +654,12 @@ export class PostgresStorage implements IStorage {
       }
     }
 
-    // Always update last_modified_at
+    // Always update audit trail and last_modified_at
+    fields.push(`audit_trail = $${idx++}`);
+    values.push(auditTrailUpdate);
+    
     fields.push(`last_modified_at = $${idx++}`);
-    values.push(new Date().toISOString());
-
-    if (fields.length === 0) return this.getProductByAdsId(adsId);
+    values.push(timestamp);
     values.push(adsId);
     const sql = `UPDATE products SET ${fields.join(", ")} WHERE ads_id = $${values.length} AND is_deleted = FALSE RETURNING *`;
     const res = await pool.query(sql, values);
@@ -541,12 +678,12 @@ export class PostgresStorage implements IStorage {
       prodStatus: row.prod_status,
       lastAuditDate: row.last_audit_date,
       auditStatus: row.audit_status,
-      returnDate: row.return_date,
       maintenanceDate: row.maintenance_date,
       maintenanceStatus: row.maintenance_status,
       orderStatus: row.order_status,
       productType: row.prod_type,
       createdBy: row.created_by,
+      createdAt: row.created_at,
       auditTrail: row.audit_trail,
       lastModifiedBy: row.last_modified_by,
       lastModifiedAt: row.last_modified_at,
@@ -557,17 +694,54 @@ export class PostgresStorage implements IStorage {
   }
 
   async updateProductOrderStatus(adsId: string, orderStatus: string): Promise<boolean> {
+    // First get current product for audit trail
+    const currentProduct = await this.getProductByAdsId(adsId);
+    if (!currentProduct) return false;
+
+    const timestamp = new Date().toISOString();
+    const currentAuditTrail = Array.isArray(currentProduct.auditTrail) ? currentProduct.auditTrail : [];
+
+    // Create updated product state
+    const updatedProductState = { ...currentProduct, orderStatus, lastModifiedAt: timestamp };
+
+    // Add audit trail entry
+    const auditTrailUpdate = JSON.stringify([...currentAuditTrail, {
+      productState: updatedProductState,
+      updatedBy: 'SYSTEM',
+      timestamp,
+      action: 'UPDATED'
+    }]);
+
     const res = await pool.query(
-      "UPDATE products SET order_status = $1, last_modified_at = $2 WHERE ads_id = $3",
-      [orderStatus, new Date().toISOString(), adsId]
+      "UPDATE products SET order_status = $1, last_modified_at = $2, audit_trail = $3 WHERE ads_id = $4",
+      [orderStatus, timestamp, auditTrailUpdate, adsId]
     );
     return (res.rowCount ?? 0) > 0;
   }
 
   async updateProductProdStatus(adsId: string, prodStatus: string): Promise<boolean> {
+    const currentProduct = await this.getProductByAdsId(adsId);
+    if (!currentProduct) return false;
+
+    const timestamp = new Date().toISOString();
+    const currentAuditTrail = typeof currentProduct.auditTrail === 'string'
+      ? JSON.parse(currentProduct.auditTrail)
+      : Array.isArray(currentProduct.auditTrail)
+        ? currentProduct.auditTrail
+        : [];
+
+    const updatedProductState = { ...currentProduct, prodStatus, lastModifiedAt: timestamp, lastModifiedBy: 'SYSTEM' };
+
+    const auditTrailUpdate = JSON.stringify([...currentAuditTrail, {
+      productState: updatedProductState,
+      updatedBy: 'SYSTEM',
+      timestamp,
+      action: 'UPDATED'
+    }]);
+
     const res = await pool.query(
-      "UPDATE products SET prod_status = $1, last_modified_at = $2 WHERE ads_id = $3",
-      [prodStatus, new Date().toISOString(), adsId]
+      "UPDATE products SET prod_status = $1, last_modified_at = $2, audit_trail = $3, last_modified_by = $4 WHERE ads_id = $5",
+      [prodStatus, timestamp, auditTrailUpdate, 'SYSTEM', adsId]
     );
     return (res.rowCount ?? 0) > 0;
   }

@@ -6,59 +6,58 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Plus, Laptop, Monitor, Edit, Trash2, Package, Filter, Upload } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
+import { Search, Plus, Laptop, Monitor, Edit, Package, Filter, Upload, X, History } from "lucide-react";
 import { useState } from "react";
 import ProductForm from "@/components/forms/product-form";
 import FileUpload from "@/components/FileUpload";
+import ProductHistorySlider from "@/components/ProductHistorySlider";
+import ProductDetailsSlider from "@/components/ProductDetailsSlider";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Product } from "@shared/schema";
 
 export default function Inventory() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isProductFormOpen, setIsProductFormOpen] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
-  const [conditionFilter, setConditionFilter] = useState<string>("all");
-  const [stockFilter, setStockFilter] = useState<string>("all");
-  const [deleteId, setDeleteId] = useState<number | 0>(0);
+  const [brandFilter, setBrandFilter] = useState<string[]>([]);
+  const [prodHealthFilter, setProdHealthFilter] = useState<string[]>([]);
+  const [prodStatusFilter, setProdStatusFilter] = useState<string[]>([]);
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string[]>([]);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [isFileUploadOpen, setIsFileUploadOpen] = useState(false);
+  const [detailsAdsId, setDetailsAdsId] = useState<string>("");
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [historyAdsId, setHistoryAdsId] = useState<string>("");
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: products, isLoading } = useQuery<Product[]>({
     queryKey: ["/api/products"],
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await fetch(`/api/products/₹{id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete product");
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
-      setDeleteId(0);
-    },
-  });
-
   const filteredProducts = products?.filter(product => {
     // Search filter
-    const matchesSearch = searchTerm === "" || 
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = searchTerm === "" ||
+      product.adsId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchTerm.toLowerCase());
+      product.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (product.prodId && product.prodId.toLowerCase().includes(searchTerm.toLowerCase()));
 
-    // Category filter
-    const matchesCategory = categoryFilter === "all" || product.category === categoryFilter;
+    // Brand filter
+    const matchesBrand = brandFilter.length === 0 || brandFilter.includes(product.brand);
 
-    // Condition filter
-    const matchesCondition = conditionFilter === "all" || product.condition === conditionFilter;
+    // Product Health filter
+    const matchesProdHealth = prodHealthFilter.length === 0 || prodHealthFilter.includes(product.prodHealth || "");
 
-    // Stock filter
-    const matchesStock = stockFilter === "all" || 
-      (stockFilter === "in-stock" && product.stockQuantity > 0) ||
-      (stockFilter === "low-stock" && product.stockQuantity > 0 && product.stockQuantity <= 10) ||
-      (stockFilter === "out-of-stock" && product.stockQuantity === 0);
+    // Product Status filter
+    const matchesProdStatus = prodStatusFilter.length === 0 || prodStatusFilter.includes(product.prodStatus || "");
 
-    return matchesSearch && matchesCategory && matchesCondition && matchesStock;
+    // Order Status filter
+    const matchesOrderStatus = orderStatusFilter.length === 0 || orderStatusFilter.includes(product.orderStatus || "");
+
+    return matchesSearch && matchesBrand && matchesProdHealth && matchesProdStatus && matchesOrderStatus;
   }) || [];
 
   if (isLoading) {
@@ -79,12 +78,11 @@ export default function Inventory() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Price</TableHead>
-                    <TableHead>Stock</TableHead>
-                    <TableHead>Condition</TableHead>
+                    <TableHead>ADS ID</TableHead>
+                    <TableHead>Brand</TableHead>
+                    <TableHead>Product Health</TableHead>
+                    <TableHead>Product Status</TableHead>
+                    <TableHead>Cost Price</TableHead>
                     <TableHead className="w-[100px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -96,7 +94,6 @@ export default function Inventory() {
                       <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-12" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                     </TableRow>
                   ))}
@@ -152,60 +149,290 @@ export default function Inventory() {
           </div>
           
           {/* Filter Controls */}
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center space-x-2">
               <Filter className="h-4 w-4 text-gray-500" />
               <span className="text-sm text-gray-600 font-medium">Filters:</span>
             </div>
-            
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="laptop">Laptops</SelectItem>
-                <SelectItem value="desktop">Desktops</SelectItem>
-              </SelectContent>
-            </Select>
 
-            <Select value={conditionFilter} onValueChange={setConditionFilter}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Condition" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Conditions</SelectItem>
-                <SelectItem value="new">New</SelectItem>
-                <SelectItem value="refurbished">Refurbished</SelectItem>
-                <SelectItem value="used">Used</SelectItem>
-              </SelectContent>
-            </Select>
+            {/* Brand Filter */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={brandFilter.length > 0 ? "default" : "outline"}
+                  size="sm"
+                  className={`h-8 px-3 ${brandFilter.length > 0 ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+                >
+                  <span className="text-xs">Brand</span>
+                  {brandFilter.length > 0 && (
+                    <>
+                      <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
+                        {brandFilter.length}
+                      </Badge>
+                      <X
+                        className="ml-1 h-3 w-3"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBrandFilter([]);
+                        }}
+                      />
+                    </>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64" align="start">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium text-sm">Brand</h4>
+                    {brandFilter.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setBrandFilter([])}
+                        className="h-6 px-2 text-xs"
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  <Separator />
+                  <div className="grid grid-cols-2 gap-2">
+                    {Array.from(new Set(products?.map(p => p.brand) || [])).map((brand) => (
+                      <div key={brand} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`brand-${brand}`}
+                          checked={brandFilter.includes(brand)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setBrandFilter([...brandFilter, brand]);
+                            } else {
+                              setBrandFilter(brandFilter.filter(b => b !== brand));
+                            }
+                          }}
+                        />
+                        <label htmlFor={`brand-${brand}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 truncate">
+                          {brand}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
 
-            <Select value={stockFilter} onValueChange={setStockFilter}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Stock Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Stock</SelectItem>
-                <SelectItem value="in-stock">In Stock</SelectItem>
-                <SelectItem value="low-stock">Low Stock</SelectItem>
-                <SelectItem value="out-of-stock">Out of Stock</SelectItem>
-              </SelectContent>
-            </Select>
+            {/* Product Health Filter */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={prodHealthFilter.length > 0 ? "default" : "outline"}
+                  size="sm"
+                  className={`h-8 px-3 ${prodHealthFilter.length > 0 ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                >
+                  <span className="text-xs">Health</span>
+                  {prodHealthFilter.length > 0 && (
+                    <>
+                      <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
+                        {prodHealthFilter.length}
+                      </Badge>
+                      <X
+                        className="ml-1 h-3 w-3"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setProdHealthFilter([]);
+                        }}
+                      />
+                    </>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64" align="start">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium text-sm">Product Health</h4>
+                    {prodHealthFilter.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setProdHealthFilter([])}
+                        className="h-6 px-2 text-xs"
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  <Separator />
+                  <div className="space-y-2">
+                    {["working", "maintenance", "expired"].map((health) => (
+                      <div key={health} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`health-${health}`}
+                          checked={prodHealthFilter.includes(health)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setProdHealthFilter([...prodHealthFilter, health]);
+                            } else {
+                              setProdHealthFilter(prodHealthFilter.filter(h => h !== health));
+                            }
+                          }}
+                        />
+                        <label htmlFor={`health-${health}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 capitalize">
+                          {health}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
 
-            {(categoryFilter !== "all" || conditionFilter !== "all" || stockFilter !== "all") && (
-              <Button 
-                variant="outline" 
+            {/* Product Status Filter */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={prodStatusFilter.length > 0 ? "default" : "outline"}
+                  size="sm"
+                  className={`h-8 px-3 ${prodStatusFilter.length > 0 ? 'bg-orange-600 hover:bg-orange-700' : ''}`}
+                >
+                  <span className="text-xs">Status</span>
+                  {prodStatusFilter.length > 0 && (
+                    <>
+                      <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
+                        {prodStatusFilter.length}
+                      </Badge>
+                      <X
+                        className="ml-1 h-3 w-3"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setProdStatusFilter([]);
+                        }}
+                      />
+                    </>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80" align="start">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium text-sm">Product Status</h4>
+                    {prodStatusFilter.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setProdStatusFilter([])}
+                        className="h-6 px-2 text-xs"
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  <Separator />
+                  <div className="grid grid-cols-1 gap-2">
+                    {["available", "leased", "sold", "leased but not working", "leased but maintenance", "returned"].map((status) => (
+                      <div key={status} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`status-${status}`}
+                          checked={prodStatusFilter.includes(status)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setProdStatusFilter([...prodStatusFilter, status]);
+                            } else {
+                              setProdStatusFilter(prodStatusFilter.filter(s => s !== status));
+                            }
+                          }}
+                        />
+                        <label htmlFor={`status-${status}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 capitalize">
+                          {status}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Order Status Filter */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={orderStatusFilter.length > 0 ? "default" : "outline"}
+                  size="sm"
+                  className={`h-8 px-3 ${orderStatusFilter.length > 0 ? 'bg-purple-600 hover:bg-purple-700' : ''}`}
+                >
+                  <span className="text-xs">Order</span>
+                  {orderStatusFilter.length > 0 && (
+                    <>
+                      <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
+                        {orderStatusFilter.length}
+                      </Badge>
+                      <X
+                        className="ml-1 h-3 w-3"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOrderStatusFilter([]);
+                        }}
+                      />
+                    </>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64" align="start">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium text-sm">Order Status</h4>
+                    {orderStatusFilter.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setOrderStatusFilter([])}
+                        className="h-6 px-2 text-xs"
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  <Separator />
+                  <div className="space-y-2">
+                    {["INVENTORY", "RENT", "PURCHASE"].map((orderStatus) => (
+                      <div key={orderStatus} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`order-${orderStatus}`}
+                          checked={orderStatusFilter.includes(orderStatus)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setOrderStatusFilter([...orderStatusFilter, orderStatus]);
+                            } else {
+                              setOrderStatusFilter(orderStatusFilter.filter(o => o !== orderStatus));
+                            }
+                          }}
+                        />
+                        <label htmlFor={`order-${orderStatus}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 capitalize">
+                          {orderStatus}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Clear All Filters */}
+            <div className="ml-2">
+              <Button
+                variant="ghost"
                 size="sm"
                 onClick={() => {
-                  setCategoryFilter("all");
-                  setConditionFilter("all");
-                  setStockFilter("all");
+                  setBrandFilter([]);
+                  setProdHealthFilter([]);
+                  setProdStatusFilter([]);
+                  setOrderStatusFilter([]);
                 }}
+                className={`h-8 px-3 text-xs ${brandFilter.length > 0 || prodHealthFilter.length > 0 || prodStatusFilter.length > 0 || orderStatusFilter.length > 0 ? 'text-red-600 hover:text-red-700 hover:bg-red-50' : 'text-gray-400'}`}
+                disabled={brandFilter.length === 0 && prodHealthFilter.length === 0 && prodStatusFilter.length === 0 && orderStatusFilter.length === 0}
               >
-                Clear Filters
+                <X className="mr-1 h-3 w-3" />
+                Clear All
               </Button>
-            )}
+            </div>
           </div>
         </div>
 
@@ -230,68 +457,43 @@ export default function Inventory() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[50px]"></TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Price</TableHead>
-                    <TableHead>Stock</TableHead>
-                    <TableHead>Condition</TableHead>
+                    <TableHead>ADS ID</TableHead>
+                    <TableHead>Brand</TableHead>
+                    <TableHead>Product Health</TableHead>
+                    <TableHead>Product Status</TableHead>
+                    <TableHead>Cost Price</TableHead>
                     <TableHead className="w-[100px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredProducts.map((product) => (
-                    <TableRow key={product.id} className="hover:bg-gray-50">
+                    <TableRow key={product.adsId} className="hover:bg-gray-50">
                       <TableCell>
-                        <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
-                          {product.category === "laptop" ? (
-                            <Laptop className="h-4 w-4 text-gray-600" />
-                          ) : (
-                            <Monitor className="h-4 w-4 text-gray-600" />
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{product.name}</div>
-                          <div className="text-sm text-gray-600">{product.brand} - {product.model}</div>
-                          {product.specifications && (
-                            <div className="text-xs text-gray-500 mt-1 max-w-xs truncate" title={product.specifications}>
-                              {product.specifications}
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono text-sm">{product.sku}</span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="capitalize">
-                          {product.category}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-semibold">₹{parseFloat(product.price).toLocaleString()}</span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge 
-                          variant={product.stockQuantity > 10 ? "default" : product.stockQuantity > 0 ? "secondary" : "destructive"}
-                          className={
-                            product.stockQuantity > 10 
-                              ? "bg-green-100 text-green-800 hover:bg-green-100" 
-                              : product.stockQuantity > 0
-                              ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
-                              : "bg-red-100 text-red-800 hover:bg-red-100"
-                          }
+                        <button
+                          onClick={() => {
+                            setDetailsAdsId(product.adsId);
+                            setIsDetailsOpen(true);
+                          }}
+                          className="font-mono text-sm text-blue-600 hover:text-blue-800 hover:underline"
                         >
-                          {product.stockQuantity}
+                          {product.adsId}
+                        </button>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-medium">{product.brand}</span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="capitalize">
+                          {product.prodHealth || "N/A"}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize">
-                          {product.condition}
+                          {product.prodStatus || "N/A"}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-semibold">₹{parseFloat(product.costPrice).toLocaleString()}</span>
                       </TableCell>
                       <TableCell>
                         <div className="flex space-x-1">
@@ -301,10 +503,13 @@ export default function Inventory() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setDeleteId(product.id)}
-                            disabled={deleteMutation.isPending}
+                            onClick={() => {
+                              setHistoryAdsId(product.adsId);
+                              setIsHistoryOpen(true);
+                            }}
+                            title="View History"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <History className="h-4 w-4" />
                           </Button>
                         </div>
                       </TableCell>
@@ -333,27 +538,6 @@ export default function Inventory() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(0)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Product</DialogTitle>
-          </DialogHeader>
-          <p>Are you sure you want to delete this product? This action cannot be undone.</p>
-          <div className="flex justify-end space-x-2 mt-4">
-            <Button variant="outline" onClick={() => setDeleteId(0)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
-              disabled={deleteMutation.isPending}
-            >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* File Upload Dialog */}
       <Dialog open={isFileUploadOpen} onOpenChange={setIsFileUploadOpen}>
@@ -364,6 +548,26 @@ export default function Inventory() {
           <FileUpload />
         </DialogContent>
       </Dialog>
+
+      {/* Product Details Slider */}
+      <ProductDetailsSlider
+        adsId={detailsAdsId}
+        isOpen={isDetailsOpen}
+        onClose={() => {
+          setIsDetailsOpen(false);
+          setDetailsAdsId("");
+        }}
+      />
+
+      {/* Product History Slider */}
+      <ProductHistorySlider
+        adsId={historyAdsId}
+        isOpen={isHistoryOpen}
+        onClose={() => {
+          setIsHistoryOpen(false);
+          setHistoryAdsId("");
+        }}
+      />
     </div>
   );
 }

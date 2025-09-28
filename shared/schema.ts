@@ -13,6 +13,7 @@ export const sessions = pgTable("session", {
 
 // Products table - laptops and computers
 // For Inventory TAB
+// adsId, brand,prodHealth,prodStatus, costPrice
 export const products = pgTable("products", {
   adsId: text("ads_id").primaryKey(), // 11-digit numeric string, e.g., "12345678901"
   referenceNumber: text("reference_number").notNull().unique(), // "ADS" + adsId, e.g., "ADS12345678901"
@@ -21,17 +22,17 @@ export const products = pgTable("products", {
   condition: text("condition").notNull(), // "new", "refurbished", "used"
   costPrice: decimal("cost", { precision: 10, scale: 2 }).notNull(),
   specifications: text("specifications"), // JSON string of specs
-  prodId: text("prod_id"), // Serial number of the product
+  prodId: text("prod_id").notNull(), // Serial number of the product
   prodHealth: text("prod_health").$default(() => "working"), // "working", "maintenance", "expired"
   prodStatus: text("prod_status").$default(() => "available"), // "leased", "sold", "leased but not working", "leased but maintenance", "available","returned"
   lastAuditDate: text("last_audit_date"), // ISO date string
   auditStatus: text("audit_status"), // "Y", "N"
-  returnDate: text("return_date"), // ISO date string
   maintenanceDate: text("maintenance_date"), // ISO date string, NULL for last maintenance date
   maintenanceStatus: text("maintenance_status"), // "Y", "N"
   orderStatus: text("order_status").$default(() => "INVENTORY"), // "RENT" = rent, "PURCHASE" = purchase , "INVENTORY" = in inventory
   productType: text("prod_type"), // "laptop", "desktop"
   createdBy: text("created_by"), // emp_id
+  createdAt: text("created_at"), // ISO date string
 
   // Audit trail fields (Recommendation #2)
   auditTrail: text("audit_trail"), // JSON array of changes
@@ -90,7 +91,7 @@ export const orders = pgTable("orders", {
   orderType: text("order_type").notNull(), // "RENT" = rent, "PURCHASE" = purchase (only these two values)
   requiredPieces: integer("required_pieces").notNull(),
   deliveredPieces: integer("delivered_pieces").notNull().default(0),
-  paymentPerPiece: decimal("payment_per_piece", { precision: 10, scale: 2 }).notNull(),
+  paymentPerPiece: decimal("payment_per_piece", { precision: 10, scale: 2 }).notNull(), // this is irrelevant as multiple products can have different prices
   securityDeposit: decimal("security_deposit", { precision: 10, scale: 2 }),
   totalPaymentReceived: decimal("total_payment", { precision: 10, scale: 2 }).notNull(),
   contractDate: text("contract_date").notNull(), // ISO date string
@@ -154,19 +155,48 @@ export const users = pgTable("users", {
 
 // Insert schemas with enhanced validation
 export const insertProductSchema = createInsertSchema(products, {
-  adsId: z.string().regex(/^\d{11}$/, "adsId must be exactly 11 digits"),
   brand: z.string().min(1, "Brand is required"),
   model: z.string().min(1, "Model is required"),
   condition: z.enum(["new", "refurbished", "used"]),
-  costPrice: z.number().positive("Cost price must be positive"),
+  costPrice: z.coerce.number().positive("Cost price must be positive").refine(val => {
+    const decimalPart = val.toString().split('.')[1];
+    return !decimalPart || decimalPart.length <= 2;
+  }, "Cost price must have at most 2 decimal places"),
+  prodId: z.string().min(1, "Serial/Product ID is required"),
   prodHealth: z.enum(["working", "maintenance", "expired"]).optional(),
   prodStatus: z.enum(["leased", "sold", "leased but not working", "leased but maintenance", "available", "returned"]).optional(),
   orderStatus: z.enum(["RENT", "PURCHASE", "INVENTORY"]).optional(),
   productType: z.enum(["laptop", "desktop"]).optional(),
 }).omit({
+  adsId: true,
   referenceNumber: true,
+  createdAt: true,
   auditTrail: true,
   lastModifiedBy: true,
+  lastModifiedAt: true,
+  deletedAt: true,
+  deletedBy: true,
+});
+
+// Schema for updating products - allows lastModifiedBy
+export const updateProductSchema = createInsertSchema(products, {
+  brand: z.string().min(1, "Brand is required"),
+  model: z.string().min(1, "Model is required"),
+  condition: z.enum(["new", "refurbished", "used"]),
+  costPrice: z.coerce.number().positive("Cost price must be positive").refine(val => {
+    const decimalPart = val.toString().split('.')[1];
+    return !decimalPart || decimalPart.length <= 2;
+  }, "Cost price must have at most 2 decimal places"),
+  prodId: z.string().min(1, "Serial/Product ID is required"),
+  prodHealth: z.enum(["working", "maintenance", "expired"]).optional(),
+  prodStatus: z.enum(["leased", "sold", "leased but not working", "leased but maintenance", "available", "returned"]).optional(),
+  orderStatus: z.enum(["RENT", "PURCHASE", "INVENTORY"]).optional(),
+  productType: z.enum(["laptop", "desktop"]).optional(),
+  lastModifiedBy: z.string().optional(),
+}).omit({
+  adsId: true,
+  referenceNumber: true,
+  auditTrail: true,
   lastModifiedAt: true,
   deletedAt: true,
   deletedBy: true,
@@ -213,12 +243,26 @@ const baseInsertOrderSchema = createInsertSchema(orders, {
   orderType: z.enum(["RENT", "PURCHASE"]),
   requiredPieces: z.number().int().positive("Required pieces must be positive"),
   deliveredPieces: z.number().int().min(0, "Delivered pieces cannot be negative").optional(),
-  paymentPerPiece: z.number().positive("Payment per piece must be positive"),
-  securityDeposit: z.number().min(0, "Security deposit cannot be negative").optional(),
-  totalPaymentReceived: z.number().min(0, "Total payment cannot be negative"),
+  paymentPerPiece: z.coerce.number().positive("Payment per piece must be positive").refine(val => {
+    const decimalPart = val.toString().split('.')[1];
+    return !decimalPart || decimalPart.length <= 2;
+  }, "Payment per piece must have at most 2 decimal places"),
+  securityDeposit: z.coerce.number().min(0, "Security deposit cannot be negative").optional().refine(val => {
+    if (val === undefined) return true;
+    const decimalPart = val.toString().split('.')[1];
+    return !decimalPart || decimalPart.length <= 2;
+  }, "Security deposit must have at most 2 decimal places"),
+  totalPaymentReceived: z.coerce.number().min(0, "Total payment cannot be negative").refine(val => {
+    const decimalPart = val.toString().split('.')[1];
+    return !decimalPart || decimalPart.length <= 2;
+  }, "Total payment must have at most 2 decimal places"),
   contractDate: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, "Valid ISO date required"),
   deliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, "Valid ISO date required").optional(),
-  quotedPrice: z.number().min(0, "Quoted price cannot be negative").optional(),
+  quotedPrice: z.coerce.number().min(0, "Quoted price cannot be negative").optional().refine(val => {
+    if (val === undefined) return true;
+    const decimalPart = val.toString().split('.')[1];
+    return !decimalPart || decimalPart.length <= 2;
+  }, "Quoted price must have at most 2 decimal places"),
   productType: z.enum(["laptop", "desktop"]).optional(),
 }).omit({
   id: true,
@@ -237,11 +281,21 @@ export const insertOrderSchema = baseInsertOrderSchema.refine((data) => data.ord
 export const insertSalesBuySchema = createInsertSchema(salesBuy, {
   adsId: z.string().regex(/^\d{11}$/, "adsId must be exactly 11 digits"),
   salesDate: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, "Valid ISO date required"),
-  costPrice: z.number().positive("Cost price must be positive"),
-  sellingPrice: z.number().positive("Selling price must be positive"),
+  costPrice: z.coerce.number().positive("Cost price must be positive").refine(val => {
+    const decimalPart = val.toString().split('.')[1];
+    return !decimalPart || decimalPart.length <= 2;
+  }, "Cost price must have at most 2 decimal places"),
+  sellingPrice: z.coerce.number().positive("Selling price must be positive").refine(val => {
+    const decimalPart = val.toString().split('.')[1];
+    return !decimalPart || decimalPart.length <= 2;
+  }, "Selling price must have at most 2 decimal places"),
   customerId: z.number().int().positive("Valid customer ID required"),
   orderId: z.string().optional(),
-  miscCost: z.number().min(0, "Misc cost cannot be negative").optional(),
+  miscCost: z.coerce.number().min(0, "Misc cost cannot be negative").optional().refine(val => {
+    if (val === undefined) return true;
+    const decimalPart = val.toString().split('.')[1];
+    return !decimalPart || decimalPart.length <= 2;
+  }, "Misc cost must have at most 2 decimal places"),
   empId: z.string().optional(),
   createdAt: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, "Valid ISO date required"),
   updatedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, "Valid ISO date required"),
@@ -257,7 +311,10 @@ export const insertSalesRentSchema = createInsertSchema(salesRent, {
   paymentDueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, "Valid ISO date required"),
   paymentStatus: z.enum(["Pending", "Incoming", "Complete"]),
   leasedQuantity: z.number().int().positive("Leased quantity must be positive"),
-  leaseAmount: z.number().positive("Lease amount must be positive"),
+  leaseAmount: z.coerce.number().positive("Lease amount must be positive").refine(val => {
+    const decimalPart = val.toString().split('.')[1];
+    return !decimalPart || decimalPart.length <= 2;
+  }, "Lease amount must have at most 2 decimal places"),
   paymentFrequency: z.number().int().min(1, "Payment frequency must be at least 1"),
   paymentTotalNumber: z.number().int().positive("Payment total number must be positive"),
   empId: z.string().optional(),
