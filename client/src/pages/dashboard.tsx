@@ -57,7 +57,6 @@ export default function Dashboard() {
       brand: string;
       model: string;
       category: string;
-      condition: string;
       price: string;
       cost: string;
       stockQuantity: number;
@@ -78,7 +77,6 @@ export default function Dashboard() {
     brand: string;
     model: string;
     category: string;
-    condition: string;
     price: string;
     cost: string;
     stockQuantity: number;

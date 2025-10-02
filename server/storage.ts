@@ -96,7 +96,6 @@ export class PostgresStorage implements IStorage {
       referenceNumber: row.reference_number,
       brand: row.brand,
       model: row.model,
-      condition: row.condition,
       costPrice: row.cost,
       specifications: row.specifications,
       prodId: row.prod_id,
@@ -146,17 +145,16 @@ export class PostgresStorage implements IStorage {
         referenceNumber,
         brand: product.brand,
         model: product.model,
-        condition: product.condition,
         costPrice: product.costPrice,
         specifications: product.specifications,
         prodId: product.prodId,
-        prodHealth: product.prodHealth,
-        prodStatus: product.prodStatus,
+        prodHealth: 'working', // default value
+        prodStatus: 'available', // default value
         lastAuditDate: product.lastAuditDate,
         auditStatus: product.auditStatus,
         maintenanceDate: product.maintenanceDate,
         maintenanceStatus: product.maintenanceStatus,
-        orderStatus: product.orderStatus,
+        orderStatus: 'INVENTORY', // default value
         productType: product.productType,
         createdBy: product.createdBy,
         lastModifiedBy: product.createdBy,
@@ -170,63 +168,64 @@ export class PostgresStorage implements IStorage {
       action: 'CREATED'
     }]);
 
+    const insertValues = [
+      adsId,
+      referenceNumber,
+      product.brand,
+      product.model,
+      product.costPrice,
+      product.specifications ?? null,
+      product.prodId ?? null,
+      product.prodHealth ?? 'working', // default value
+      product.prodStatus ?? 'available', // default value
+      product.orderStatus ?? 'INVENTORY', // default value
+      product.lastAuditDate ?? null,
+      product.auditStatus ?? null,
+      product.maintenanceDate ?? null,
+      product.maintenanceStatus ?? null,
+      product.productType ?? null,
+      product.createdBy ?? null,
+      new Date().toISOString(), // createdAt
+      auditTrail,
+      product.createdBy ?? null,
+      new Date().toISOString(),
+      false // is_deleted
+    ];
+
     const res = await pool.query(
       `INSERT INTO products
-        (ads_id, reference_number, brand, model, condition, cost, specifications, prod_id, prod_health, prod_status, last_audit_date, audit_status, maintenance_date, maintenance_status, order_status, prod_type, created_by, created_at, audit_trail, last_modified_by, last_modified_at, is_deleted)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+        (ads_id, reference_number, brand, model, cost, specifications, prod_id, prod_health, prod_status, order_status, last_audit_date, audit_status, maintenance_date, maintenance_status, prod_type, created_by, created_at, audit_trail, last_modified_by, last_modified_at, is_deleted)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
        RETURNING *`,
-      [
-        adsId,
-        referenceNumber,
-        product.brand,
-        product.model,
-        product.condition,
-        product.costPrice,
-        product.specifications ?? null,
-        product.prodId ?? null,
-        product.prodHealth ?? 'working',
-        product.prodStatus ?? 'available',
-        product.lastAuditDate ?? null,
-        product.auditStatus ?? null,
-        product.maintenanceDate ?? null,
-        product.maintenanceStatus ?? null,
-        product.orderStatus ?? 'INVENTORY',
-        product.productType ?? null,
-        product.createdBy ?? null,
-        new Date().toISOString(), // createdAt
-        auditTrail,
-        product.createdBy ?? null,
-        new Date().toISOString(),
-        false // is_deleted
-      ]
+      insertValues
     );
 
-    const row = res.rows[0];
+    const insertedRow = res.rows[0];
+
     return {
-      adsId: row.ads_id,
-      referenceNumber: row.reference_number,
-      brand: row.brand,
-      model: row.model,
-      condition: row.condition,
-      costPrice: row.cost,
-      specifications: row.specifications,
-      prodId: row.prod_id,
-      prodHealth: row.prod_health,
-      prodStatus: row.prod_status,
-      lastAuditDate: row.last_audit_date,
-      auditStatus: row.audit_status,
-      maintenanceDate: row.maintenance_date,
-      maintenanceStatus: row.maintenance_status,
-      orderStatus: row.order_status,
-      productType: row.prod_type,
-      createdBy: row.created_by,
-      createdAt: row.created_at,
-      auditTrail: row.audit_trail,
-      lastModifiedBy: row.last_modified_by,
-      lastModifiedAt: row.last_modified_at,
-      isDeleted: row.is_deleted,
-      deletedAt: row.deleted_at,
-      deletedBy: row.deleted_by
+      adsId: insertedRow.ads_id,
+      referenceNumber: insertedRow.reference_number,
+      brand: insertedRow.brand,
+      model: insertedRow.model,
+      costPrice: insertedRow.cost,
+      specifications: insertedRow.specifications,
+      prodId: insertedRow.prod_id,
+      prodHealth: insertedRow.prod_health,
+      prodStatus: insertedRow.prod_status,
+      lastAuditDate: insertedRow.last_audit_date,
+      auditStatus: insertedRow.audit_status,
+      maintenanceDate: insertedRow.maintenance_date,
+      maintenanceStatus: insertedRow.maintenance_status,
+      orderStatus: insertedRow.order_status,
+      productType: insertedRow.prod_type,
+      createdBy: insertedRow.created_by,
+      createdAt: insertedRow.created_at,
+      auditTrail: insertedRow.audit_trail,
+      lastModifiedBy: insertedRow.last_modified_by,
+      lastModifiedAt: insertedRow.last_modified_at,
+      isDeleted: insertedRow.is_deleted,
+      deletedAt: insertedRow.deleted_at,
+      deletedBy: insertedRow.deleted_by
     };
   }
 
@@ -269,17 +268,15 @@ export class PostgresStorage implements IStorage {
             referenceNumber: existing.reference_number,
             brand: product.brand,
             model: product.model,
-            condition: product.condition,
             costPrice: product.costPrice,
             specifications: product.specifications ?? null,
             prodId: product.prodId ?? null,
-            prodHealth: product.prodHealth ?? 'working',
-            prodStatus: product.prodStatus ?? 'available',
+            // prodHealth, prodStatus, orderStatus use schema defaults
             lastAuditDate: product.lastAuditDate ?? null,
             auditStatus: product.auditStatus ?? null,
             maintenanceDate: product.maintenanceDate ?? null,
             maintenanceStatus: product.maintenanceStatus ?? null,
-            orderStatus: product.orderStatus ?? 'INVENTORY',
+            // orderStatus uses schema default
             productType: product.productType ?? null,
             createdBy: existing.created_by,
             lastModifiedBy: product.createdBy ?? null,
@@ -299,28 +296,23 @@ export class PostgresStorage implements IStorage {
 
           const res = await client.query(
             `UPDATE products SET
-              brand = $1, model = $2, condition = $3, cost = $4,
-              specifications = $5, prod_id = $6, prod_health = $7,
-              prod_status = $8, last_audit_date = $9, audit_status = $10,
-              maintenance_date = $11, maintenance_status = $12,
-              order_status = $13, prod_type = $14, last_modified_by = $15,
-              last_modified_at = $16, audit_trail = $17
-             WHERE reference_number = $18
+              brand = $1, model = $2, cost = $3,
+              specifications = $4, prod_id = $5, last_audit_date = $6, audit_status = $7,
+              maintenance_date = $8, maintenance_status = $9,
+              prod_type = $10, last_modified_by = $11,
+              last_modified_at = $12, audit_trail = $13
+             WHERE reference_number = $14
              RETURNING *`,
             [
               product.brand,
               product.model,
-              product.condition,
               product.costPrice,
               product.specifications ?? null,
               product.prodId ?? null,
-              product.prodHealth ?? 'working',
-              product.prodStatus ?? 'available',
               product.lastAuditDate ?? null,
               product.auditStatus ?? null,
               product.maintenanceDate ?? null,
               product.maintenanceStatus ?? null,
-              product.orderStatus ?? 'INVENTORY',
               product.productType ?? null,
               product.createdBy ?? null,
               timestamp,
@@ -335,7 +327,6 @@ export class PostgresStorage implements IStorage {
             referenceNumber: row.reference_number,
             brand: row.brand,
             model: row.model,
-            condition: row.condition,
             costPrice: row.cost,
             specifications: row.specifications,
             prodId: row.prod_id,
@@ -380,27 +371,28 @@ export class PostgresStorage implements IStorage {
           const adsId = currentMaxId.toString().padStart(11, '0');
           const referenceNumber = `ADS${adsId}`;
 
+          console.log(`Creating product ${adsId}: prodStatus=${product.prodStatus || 'DEFAULT'}, orderStatus=${product.orderStatus || 'DEFAULT'}`);
+
           const res = await client.query(
             `INSERT INTO products
-              (ads_id, reference_number, brand, model, condition, cost, specifications, prod_id, prod_health, prod_status, last_audit_date, audit_status, maintenance_date, maintenance_status, order_status, prod_type, created_by, created_at, audit_trail, last_modified_by, last_modified_at, is_deleted)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+              (ads_id, reference_number, brand, model, cost, specifications, prod_id, prod_health, prod_status, order_status, last_audit_date, audit_status, maintenance_date, maintenance_status, prod_type, created_by, created_at, audit_trail, last_modified_by, last_modified_at, is_deleted)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
              RETURNING *`,
             [
               adsId,
               referenceNumber,
               product.brand,
               product.model,
-              product.condition,
               product.costPrice,
               product.specifications ?? null,
               product.prodId ?? null,
-              product.prodHealth ?? 'working',
-              product.prodStatus ?? 'available',
+              product.prodHealth ?? 'working', // explicit default
+              product.prodStatus ?? 'available', // explicit default
+              product.orderStatus ?? 'INVENTORY', // explicit default
               product.lastAuditDate ?? null,
               product.auditStatus ?? null,
               product.maintenanceDate ?? null,
               product.maintenanceStatus ?? null,
-              product.orderStatus ?? 'INVENTORY',
               product.productType ?? null,
               product.createdBy ?? null,
               new Date().toISOString(), // createdAt
@@ -410,7 +402,6 @@ export class PostgresStorage implements IStorage {
                   referenceNumber,
                   brand: product.brand,
                   model: product.model,
-                  condition: product.condition,
                   costPrice: product.costPrice,
                   specifications: product.specifications ?? null,
                   prodId: product.prodId ?? null,
@@ -445,7 +436,6 @@ export class PostgresStorage implements IStorage {
             referenceNumber: row.reference_number,
             brand: row.brand,
             model: row.model,
-            condition: row.condition,
             costPrice: row.cost,
             specifications: row.specifications,
             prodId: row.prod_id,
@@ -547,7 +537,6 @@ export class PostgresStorage implements IStorage {
       referenceNumber: row.reference_number,
       brand: row.brand,
       model: row.model,
-      condition: row.condition,
       costPrice: row.cost,
       specifications: row.specifications,
       prodId: row.prod_id,
@@ -621,12 +610,6 @@ export class PostgresStorage implements IStorage {
       } else if (key === "prodId") {
         fields.push(`prod_id = $${idx++}`);
         values.push(value);
-      } else if (key === "prodHealth") {
-        fields.push(`prod_health = $${idx++}`);
-        values.push(value);
-      } else if (key === "prodStatus") {
-        fields.push(`prod_status = $${idx++}`);
-        values.push(value);
       } else if (key === "lastAuditDate") {
         fields.push(`last_audit_date = $${idx++}`);
         values.push(value);
@@ -638,9 +621,6 @@ export class PostgresStorage implements IStorage {
         values.push(value);
       } else if (key === "maintenanceStatus") {
         fields.push(`maintenance_status = $${idx++}`);
-        values.push(value);
-      } else if (key === "orderStatus") {
-        fields.push(`order_status = $${idx++}`);
         values.push(value);
       } else if (key === "createdBy") {
         fields.push(`created_by = $${idx++}`);
@@ -670,7 +650,6 @@ export class PostgresStorage implements IStorage {
       referenceNumber: row.reference_number,
       brand: row.brand,
       model: row.model,
-      condition: row.condition,
       costPrice: row.cost,
       specifications: row.specifications,
       prodId: row.prod_id,

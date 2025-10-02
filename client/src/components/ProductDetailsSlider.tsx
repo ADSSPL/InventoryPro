@@ -100,19 +100,11 @@ export default function ProductDetailsSlider({ adsId, isOpen, onClose }: Product
                       <p className="text-sm text-gray-900">{product.model}</p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Type</label>
-                      <Badge variant="outline" className="capitalize">
-                        {product.productType || 'N/A'}
-                      </Badge>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Condition</label>
-                      <Badge variant="outline" className="capitalize">
-                        {product.condition}
-                      </Badge>
-                    </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Type</label>
+                    <Badge variant="outline" className="capitalize">
+                      {product.productType || 'N/A'}
+                    </Badge>
                   </div>
                 </CardContent>
               </Card>

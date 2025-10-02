@@ -19,7 +19,6 @@ export const products = pgTable("products", {
   referenceNumber: text("reference_number").notNull().unique(), // "ADS" + adsId, e.g., "ADS12345678901"
   brand: text("brand").notNull(),
   model: text("model").notNull(),
-  condition: text("condition").notNull(), // "new", "refurbished", "used"
   costPrice: decimal("cost", { precision: 10, scale: 2 }).notNull(),
   specifications: text("specifications"), // JSON string of specs
   prodId: text("prod_id").notNull(), // Serial number of the product
@@ -157,7 +156,6 @@ export const users = pgTable("users", {
 export const insertProductSchema = createInsertSchema(products, {
   brand: z.string().min(1, "Brand is required"),
   model: z.string().min(1, "Model is required"),
-  condition: z.enum(["new", "refurbished", "used"]),
   costPrice: z.coerce.number().positive("Cost price must be positive").refine(val => {
     const decimalPart = val.toString().split('.')[1];
     return !decimalPart || decimalPart.length <= 2;
@@ -182,7 +180,6 @@ export const insertProductSchema = createInsertSchema(products, {
 export const updateProductSchema = createInsertSchema(products, {
   brand: z.string().min(1, "Brand is required"),
   model: z.string().min(1, "Model is required"),
-  condition: z.enum(["new", "refurbished", "used"]),
   costPrice: z.coerce.number().positive("Cost price must be positive").refine(val => {
     const decimalPart = val.toString().split('.')[1];
     return !decimalPart || decimalPart.length <= 2;

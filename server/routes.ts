@@ -46,7 +46,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       {
         brand: "Apple",
         model: "MacBook Pro",
-        condition: "new",
         costPrice: "1999.99",
         specifications: "16GB RAM, 512GB SSD, M2 Pro chip",
         prodId: "MBP001",
@@ -59,7 +58,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       {
         brand: "Dell",
         model: "XPS 13",
-        condition: "refurbished",
         costPrice: "699.99",
         specifications: "8GB RAM, 256GB SSD, Intel i5",
         prodId: "DXPS001",
@@ -73,11 +71,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     console.log('Sample data:', JSON.stringify(sampleData, null, 2));
 
-    const headers = 'brand,model,condition,costPrice,specifications,prodId,prodHealth,prodStatus,orderStatus,productType,createdBy';
+    const headers = 'brand,model,costPrice,specifications,prodId,prodHealth,prodStatus,orderStatus,productType,createdBy';
     console.log('CSV Headers:', headers);
 
     const csvRows = sampleData.map((row, index) => {
-      const csvRow = `"${row.brand}","${row.model}","${row.condition}","${row.costPrice}","${row.specifications}","${row.prodId}","${row.prodHealth}","${row.prodStatus}","${row.orderStatus}","${row.productType}","${row.createdBy}"`;
+      const csvRow = `"${row.brand}","${row.model}","${row.costPrice}","${row.specifications}","${row.prodId}","${row.prodHealth}","${row.prodStatus}","${row.orderStatus}","${row.productType}","${row.createdBy}"`;
       console.log(`Row ${index + 1} CSV:`, csvRow);
       return csvRow;
     });
@@ -136,7 +134,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const productData: any = {
             brand: row.brand || row.Brand,
             model: row.model || row.Model,
-            condition: row.condition || row.Condition || 'new',
             costPrice: (row.costPrice || row.cost || row.Cost || '0').toString(),
             specifications: row.specifications || row.Specifications || null,
             prodId: row.prodId || row.prod_id || null,
@@ -146,7 +143,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             auditStatus: row.auditStatus || row.audit_status || null,
             maintenanceDate: row.maintenanceDate || row.maintenance_date || null,
             maintenanceStatus: row.maintenanceStatus || row.maintenance_status || null,
-            orderType: row.orderType || row.order_type || row.orderStatus || row.order_status || 'INVENTORY',
+            orderStatus: row.orderType || row.order_type || row.orderStatus || row.order_status || 'INVENTORY',
             productType: row.productType || row.product_type || 'laptop',
             createdBy: row.createdBy || row.created_by || null,
           };
@@ -173,22 +170,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Update the product data with properly typed values
           productData.costPrice = costPrice.toFixed(2);
 
-          // Validate condition
-          if (!['new', 'refurbished', 'used'].includes(productData.condition)) {
-            errors.push(`Row ${i + 1}: Invalid condition (must be 'new', 'refurbished', or 'used')`);
-            continue;
-          }
-
-          if (!['new', 'refurbished', 'used'].includes(productData.condition)) {
-            errors.push(`Row ${i + 1}: Invalid condition (must be 'new', 'refurbished', or 'used')`);
-            continue;
-          }
-
           // Validate prodHealth
           if (!['working', 'maintenance', 'expired'].includes(productData.prodHealth)) {
             errors.push(`Row ${i + 1}: Invalid prodHealth (must be 'working', 'maintenance', or 'expired')`);
             continue;
           }
+
+          console.log(`Row ${i + 1} - prodStatus: "${productData.prodStatus}", orderStatus: "${productData.orderStatus}"`);
 
           // Validate prodStatus
           const validProdStatuses = ['leased', 'sold', 'leased but not working', 'leased but maintenance', 'available', 'returned'];
@@ -198,7 +186,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           // Validate orderStatus
-          if (!['RENT', 'PURCHASE', 'INVENTORY'].includes(productData.orderType)) {
+          if (!['RENT', 'PURCHASE', 'INVENTORY'].includes(productData.orderStatus)) {
             errors.push(`Row ${i + 1}: Invalid orderStatus (must be 'RENT', 'PURCHASE', or 'INVENTORY')`);
             continue;
           }
@@ -305,13 +293,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })(),
         createdBy: rawData.createdBy || null,
         prodId: rawData.prodId || null,
-        prodHealth: rawData.prodHealth || null,
-        prodStatus: rawData.prodStatus || 'available',
         lastAuditDate: rawData.lastAuditDate || null,
         auditStatus: rawData.auditStatus || null,
         maintenanceDate: rawData.maintenanceDate || null,
         maintenanceStatus: rawData.maintenanceStatus || null,
-        orderType: rawData.orderType || rawData.orderStatus || 'INVENTORY',
+        // prodHealth, prodStatus, orderStatus will use schema defaults
       };
 
       console.log('Raw data:', rawData);
@@ -361,13 +347,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return undefined;
         })() : undefined,
         prodId: rawData.prodId || undefined,
-        prodHealth: rawData.prodHealth || undefined,
-        prodStatus: rawData.prodStatus || undefined,
         lastAuditDate: rawData.lastAuditDate || undefined,
         auditStatus: rawData.auditStatus || undefined,
         maintenanceDate: rawData.maintenanceDate || undefined,
         maintenanceStatus: rawData.maintenanceStatus || undefined,
-        orderType: rawData.orderType || rawData.orderStatus || undefined,
+        // prodHealth, prodStatus, orderStatus are not updated from inventory form
       };
 
       console.log('PUT Raw data:', rawData);

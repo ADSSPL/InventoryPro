@@ -77,7 +77,7 @@ export default function ProductHistorySlider({ adsId, isOpen, onClose }: Product
 
     const changes: Array<{ field: string, oldValue: any, newValue: any }> = [];
     const fieldsToCheck = [
-      'brand', 'model', 'condition', 'costPrice', 'specifications', 
+      'brand', 'model', 'costPrice', 'specifications',
       'prodId', 'prodHealth', 'prodStatus', 'orderStatus', 'productType',
       'lastAuditDate', 'auditStatus', 'maintenanceDate', 'maintenanceStatus'
     ];
@@ -293,12 +293,6 @@ export default function ProductHistorySlider({ adsId, isOpen, onClose }: Product
                                         <span className="text-gray-600">Type:</span>
                                         <Badge variant="outline" className="ml-2 capitalize text-xs">
                                           {product.productType || 'N/A'}
-                                        </Badge>
-                                      </div>
-                                      <div>
-                                        <span className="text-gray-600">Condition:</span>
-                                        <Badge variant="outline" className="ml-2 capitalize text-xs">
-                                          {product.condition}
                                         </Badge>
                                       </div>
                                     </div>

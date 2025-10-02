@@ -42,17 +42,13 @@ export default function ProductForm({ product, onSuccess, onCancel }: ProductFor
       brand: "",
       model: "",
       productType: "laptop",
-      condition: "new",
       costPrice: 0.00,
       specifications: "",
       prodId: "",
-      prodHealth: "working",
-      prodStatus: "available",
       lastAuditDate: "",
       auditStatus: "",
       maintenanceDate: "",
       maintenanceStatus: "",
-      orderStatus: "INVENTORY",
     },
   });
 
@@ -68,17 +64,14 @@ export default function ProductForm({ product, onSuccess, onCancel }: ProductFor
         brand: product.brand,
         model: product.model,
         productType: (product.productType === "laptop" || product.productType === "desktop") ? product.productType : "laptop",
-        condition: product.condition as "new" | "refurbished" | "used" || "new",
         costPrice: parseFloat(product.costPrice) || 0,
         specifications: product.specifications || "",
         prodId: product.prodId || "",
-        prodHealth: product.prodHealth as "working" | "maintenance" | "expired" || "working",
-        prodStatus: product.prodStatus as "available" | "leased" | "sold" | "leased but not working" | "leased but maintenance" | "returned" || "available",
         lastAuditDate: product.lastAuditDate || "",
         auditStatus: product.auditStatus || "",
         maintenanceDate: product.maintenanceDate || "",
         maintenanceStatus: product.maintenanceStatus || "",
-        orderStatus: product.orderStatus as "INVENTORY" | "RENT" | "PURCHASE" || "INVENTORY",
+        // prodHealth, prodStatus, orderStatus are not editable in inventory form
         // createdBy is not shown in form, handled automatically
       });
     } else {
@@ -86,17 +79,13 @@ export default function ProductForm({ product, onSuccess, onCancel }: ProductFor
         brand: "",
         model: "",
         productType: "laptop",
-        condition: "new",
         costPrice: 0.00,
         specifications: "",
         prodId: "",
-        prodHealth: "working",
-        prodStatus: "available",
         lastAuditDate: "",
         auditStatus: "",
         maintenanceDate: "",
         maintenanceStatus: "",
-        orderStatus: "INVENTORY",
       });
     }
   }, [product, form]);
@@ -247,28 +236,6 @@ export default function ProductForm({ product, onSuccess, onCancel }: ProductFor
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="condition"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">Condition</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select condition" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="new">New</SelectItem>
-                      <SelectItem value="refurbished">Refurbished</SelectItem>
-                      <SelectItem value="used">Used</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
             <FormField
               control={form.control}
@@ -306,79 +273,10 @@ export default function ProductForm({ product, onSuccess, onCancel }: ProductFor
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="orderStatus"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">Order Status</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || "INVENTORY"}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="INVENTORY">In Inventory</SelectItem>
-                      <SelectItem value="RENT">For Rent</SelectItem>
-                      <SelectItem value="PURCHASE">For Sale</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
           </div>
 
           <div className="space-y-4">
-            <FormField
-              control={form.control}
-              name="prodHealth"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">Health Status</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || "working"}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select health" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="working">Working</SelectItem>
-                      <SelectItem value="maintenance">Needs Maintenance</SelectItem>
-                      <SelectItem value="expired">Expired</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
-            <FormField
-              control={form.control}
-              name="prodStatus"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-medium">Availability Status</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || "available"}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="available">Available</SelectItem>
-                      <SelectItem value="leased">Leased</SelectItem>
-                      <SelectItem value="sold">Sold</SelectItem>
-                      <SelectItem value="leased but not working">Leased (Not Working)</SelectItem>
-                      <SelectItem value="leased but maintenance">Leased (Maintenance)</SelectItem>
-                      <SelectItem value="returned">Returned</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
           </div>
 
           <FormField

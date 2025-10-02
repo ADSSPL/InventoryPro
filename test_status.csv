@@ -1,0 +1,3 @@
+brand,model,costPrice,specifications,prodId,prodHealth,prodStatus,orderStatus,productType,createdBy
+Apple,MacBook Pro,1999.99,16GB RAM,test001,working,,INVENTORY,laptop,ADS0001
+Dell,XPS 13,699.99,8GB RAM,test002,,available,,desktop,ADS0002
