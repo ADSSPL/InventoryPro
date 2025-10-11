@@ -72,14 +72,10 @@ When adding new columns/tables:
 scripts/
 └── resetDatabase.ts          # ✅ Main database setup script
 
-migrations/
-├── 0000_outstanding_lilandra.sql  # ✅ Base schema (Drizzle ORM)
-├── relations.ts                   # ✅ Database relations
-├── schema.ts                      # ✅ Drizzle schema definitions
-└── meta/                          # ✅ Migration metadata
-
 shared/
-└── schema.ts                      # ✅ TypeScript type definitions
+└── schema.ts                      # ✅ TypeScript type definitions & schema
+
+drizzle.config.ts                  # ✅ Drizzle configuration for db:push
 ```
 
 ## 🎯 Benefits

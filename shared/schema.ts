@@ -48,21 +48,23 @@ export const products = pgTable("products", {
 // For Customer Info Tab
 export const clients = pgTable("clients", {
   id: serial("id").primaryKey(),
+  customerId: text("customer_id").notNull().unique(), // CX000001, CX000002, etc.
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   phone: text("phone"),
   address: text("address"),
   city: text("city"),
   state: text("state"),
-  zipCode: text("zip_code"),
+  zipCode: integer("zip_code"),
   company: text("company"),
   isActive: boolean("is_active").notNull().default(true),
-  cxType: text("cx_type"), // "Retail", "ORG"
   gst: text("gst"), // 15-digit GST number
-  idProof: text("id_proof"), // "Aadhar", "PAN"
+  pan: text("pan"), // 10-digit PAN number
   website: text("website"),
-  addressProof: text("address_proof"), // "Y", "N"
-  repeatCx: text("repeat_cx"), // "Y", "N"
+  createdAt: text("created_at"), // ISO date string
+  createdBy: text("created_by"), // emp_id
+  updatedAt: text("updated_at"), // ISO date string
+  updatedBy: text("updated_by"), // emp_id
 });
 
 
@@ -95,11 +97,24 @@ export const orders = pgTable("orders", {
   totalPaymentReceived: decimal("total_payment", { precision: 10, scale: 2 }).notNull(),
   contractDate: text("contract_date").notNull(), // ISO date string
   deliveryDate: text("delivery_date"), // ISO date string
+  estimatedDeliveryDate: text("estimated_delivery_date"), // ISO date string
+  orderDeliveryStatus: text("order_delivery_status").$default(() => "pending"), // "pending", "in_transit", "delivered"
+  discountPercentage: decimal("discount_percentage", { precision: 5, scale: 2 }),
   quotedPrice: decimal("quoted_price", { precision: 10, scale: 2 }),
   discount: text("discount"),
   createdAt: text("created_at").notNull(), // ISO date string
   createdBy: text("created_by"), // emp_id
   productType: text("prod_type"), // "laptop", "desktop"
+});
+
+// Order Items table - Junction table for orders and products with individual pricing
+export const orderItems = pgTable("order_items", {
+  id: serial("id").primaryKey(),
+  orderId: text("order_id").notNull(), // Reference to orders.orderId
+  adsId: text("ads_id").notNull(), // Reference to products.adsId
+  sellingPrice: decimal("selling_price", { precision: 10, scale: 2 }).notNull(), // For PURCHASE orders
+  rentalPricePerMonth: decimal("rental_price_per_month", { precision: 10, scale: 2 }), // For RENT orders
+  createdAt: text("created_at").notNull(), // ISO date string
 });
 
 // Sales Buy table - for purchase transactions
@@ -203,14 +218,41 @@ export const updateProductSchema = createInsertSchema(products, {
 export const insertClientSchema = createInsertSchema(clients, {
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Valid email is required"),
-  phone: z.string().optional(),
-  cxType: z.enum(["Retail", "ORG"]).optional(),
-  gst: z.string().regex(/^\d{15}$/, "GST must be 15 digits").optional(),
-  idProof: z.enum(["Aadhar", "PAN"]).optional(),
-  addressProof: z.enum(["Y", "N"]).optional(),
-  repeatCx: z.enum(["Y", "N"]).optional(),
+  phone: z.string().regex(/^\d{10}$/, "Mobile number must be exactly 10 digits"),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.coerce.number().int().positive().optional().refine(val => !val || val.toString().length === 6, "PIN code must be exactly 6 digits"),
+  company: z.string().optional(),
+  gst: z.string().optional().refine(val => !val || /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[0-9]{1}[A-Z]{1}[0-9]{1}$/.test(val), "GST must be 15 characters in format: 22AAAAA0000A1Z5"),
+  pan: z.string().optional().refine(val => !val || /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(val), "PAN must be in format AAAAA9999A"),
+  website: z.string().url("Valid website URL required").optional(),
 }).omit({
   id: true,
+  customerId: true,
+  createdAt: true,
+  createdBy: true,
+  updatedAt: true,
+  updatedBy: true,
+});
+
+export const updateClientSchema = createInsertSchema(clients, {
+  name: z.string().min(1, "Name is required"),
+  email: z.string().email("Valid email is required"),
+  phone: z.string().regex(/^\d{10}$/, "Mobile number must be exactly 10 digits"),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.coerce.number().int().positive().optional().refine(val => !val || val.toString().length === 6, "PIN code must be exactly 6 digits"),
+  company: z.string().optional(),
+  gst: z.string().optional().refine(val => !val || /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[0-9]{1}[A-Z]{1}[0-9]{1}$/.test(val), "GST must be 15 characters in format: 22AAAAA0000A1Z5"),
+  pan: z.string().optional().refine(val => !val || /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(val), "PAN must be in format AAAAA9999A"),
+  website: z.string().url("Valid website URL required").optional(),
+}).omit({
+  id: true,
+  customerId: true,
+  createdAt: true,
+  createdBy: true,
 });
 
 export const insertProductDateEventSchema = createInsertSchema(productDateEvents, {
@@ -255,6 +297,13 @@ const baseInsertOrderSchema = createInsertSchema(orders, {
   }, "Total payment must have at most 2 decimal places"),
   contractDate: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, "Valid ISO date required"),
   deliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, "Valid ISO date required").optional(),
+  estimatedDeliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, "Valid ISO date required").optional(),
+  orderDeliveryStatus: z.enum(["pending", "in_transit", "delivered"]).optional(),
+  discountPercentage: z.coerce.number().min(0, "Discount cannot be negative").max(100, "Discount cannot exceed 100%").optional().refine(val => {
+    if (val === undefined) return true;
+    const decimalPart = val.toString().split('.')[1];
+    return !decimalPart || decimalPart.length <= 2;
+  }, "Discount percentage must have at most 2 decimal places"),
   quotedPrice: z.coerce.number().min(0, "Quoted price cannot be negative").optional().refine(val => {
     if (val === undefined) return true;
     const decimalPart = val.toString().split('.')[1];
@@ -321,12 +370,30 @@ export const insertSalesRentSchema = createInsertSchema(salesRent, {
   id: true,
 });
 
+export const insertOrderItemSchema = createInsertSchema(orderItems, {
+  orderId: z.string().min(1, "Order ID is required"),
+  adsId: z.string().regex(/^\d{11}$/, "adsId must be exactly 11 digits"),
+  sellingPrice: z.coerce.number().positive("Selling price must be positive").refine(val => {
+    const decimalPart = val.toString().split('.')[1];
+    return !decimalPart || decimalPart.length <= 2;
+  }, "Selling price must have at most 2 decimal places"),
+  rentalPricePerMonth: z.coerce.number().positive("Rental price must be positive").optional().refine(val => {
+    if (val === undefined) return true;
+    const decimalPart = val.toString().split('.')[1];
+    return !decimalPart || decimalPart.length <= 2;
+  }, "Rental price must have at most 2 decimal places"),
+  createdAt: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, "Valid ISO date required"),
+}).omit({
+  id: true,
+});
+
 // Types
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 
 export type Client = typeof clients.$inferSelect;
 export type InsertClient = z.infer<typeof insertClientSchema>;
+export type UpdateClient = z.infer<typeof updateClientSchema>;
 
 
 export type ProductDateEvent = typeof productDateEvents.$inferSelect;
@@ -337,6 +404,9 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
+
+export type OrderItem = typeof orderItems.$inferSelect;
+export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
 
 export type SalesBuy = typeof salesBuy.$inferSelect;
 export type InsertSalesBuy = z.infer<typeof insertSalesBuySchema>;
@@ -410,6 +480,17 @@ export const salesRentRelations = relations(salesRent, ({ one }) => ({
   }),
   product: one(products, {
     fields: [salesRent.adsId],
+    references: [products.adsId],
+  }),
+}));
+
+export const orderItemsRelations = relations(orderItems, ({ one }) => ({
+  order: one(orders, {
+    fields: [orderItems.orderId],
+    references: [orders.orderId],
+  }),
+  product: one(products, {
+    fields: [orderItems.adsId],
     references: [products.adsId],
   }),
 }));

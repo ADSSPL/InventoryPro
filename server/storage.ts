@@ -3,6 +3,7 @@ import {
   Client, InsertClient,
   ProductDateEvent, InsertProductDateEvent,
   Order, InsertOrder,
+  OrderItem, InsertOrderItem,
   SalesBuy, InsertSalesBuy,
   SalesRent, InsertSalesRent,
   User
@@ -49,6 +50,12 @@ export interface IStorage {
   createOrder(order: InsertOrder): Promise<Order>;
   updateOrder(id: number, order: Partial<InsertOrder>): Promise<Order | undefined>;
   deleteOrder(id: number): Promise<boolean>;
+
+  // Order Items
+  getOrderItems(orderId: string): Promise<OrderItem[]>;
+  createOrderItem(orderItem: InsertOrderItem): Promise<OrderItem>;
+  createOrderItems(orderItems: InsertOrderItem[]): Promise<OrderItem[]>;
+  deleteOrderItems(orderId: string): Promise<boolean>;
 
   // Sales Buy
   getSalesBuy(): Promise<SalesBuy[]>;
@@ -505,26 +512,34 @@ export class PostgresStorage implements IStorage {
     }
     if (fields.length === 0) return this.getProduct(id);
     values.push(id);
-    const sql = `UPDATE products SET ${fields.join(", ")} WHERE id = $${values.length} RETURNING *`;
+    const sql = `UPDATE products SET ${fields.join(", ")} WHERE ads_id = $${values.length} RETURNING *`;
     const res = await pool.query(sql, values);
     if (res.rows.length === 0) return undefined;
     const row = res.rows[0];
     return {
-      id: row.id,
       adsId: row.ads_id,
       referenceNumber: row.reference_number,
       brand: row.brand,
-      name: row.name,
-      sku: row.sku,
       model: row.model,
-      category: row.category,
-      condition: row.condition,
-      price: row.price,
-      cost: row.cost,
-      stockQuantity: row.stock_quantity,
+      costPrice: row.cost,
       specifications: row.specifications,
-      description: row.description,
-      isActive: row.is_active
+      prodId: row.prod_id,
+      prodHealth: row.prod_health,
+      prodStatus: row.prod_status,
+      lastAuditDate: row.last_audit_date,
+      auditStatus: row.audit_status,
+      maintenanceDate: row.maintenance_date,
+      maintenanceStatus: row.maintenance_status,
+      orderStatus: row.order_status,
+      productType: row.prod_type,
+      createdBy: row.created_by,
+      createdAt: row.created_at,
+      auditTrail: row.audit_trail,
+      lastModifiedBy: row.last_modified_by,
+      lastModifiedAt: row.last_modified_at,
+      isDeleted: row.is_deleted,
+      deletedAt: row.deleted_at,
+      deletedBy: row.deleted_by
     };
   }
 
@@ -776,7 +791,7 @@ export class PostgresStorage implements IStorage {
           product.adsId,
           'product_deactivated',
           new Date().toISOString(),
-          `Product ${product.name} deactivated from inventory`,
+          `Product ${product.brand} ${product.model} deactivated from inventory`,
           new Date().toISOString()
         ]
       );
@@ -791,6 +806,7 @@ export class PostgresStorage implements IStorage {
     const res = await pool.query("SELECT * FROM clients WHERE is_active = TRUE ORDER BY name");
     return res.rows.map(row => ({
       id: row.id,
+      customerId: row.customer_id,
       name: row.name,
       email: row.email,
       phone: row.phone,
@@ -800,12 +816,13 @@ export class PostgresStorage implements IStorage {
       zipCode: row.zip_code,
       company: row.company,
       isActive: row.is_active,
-      cxType: row.cx_type,
       gst: row.gst,
-      idProof: row.id_proof,
+      pan: row.pan,
       website: row.website,
-      addressProof: row.address_proof,
-      repeatCx: row.repeat_cx
+      createdAt: row.created_at,
+      createdBy: row.created_by,
+      updatedAt: row.updated_at,
+      updatedBy: row.updated_by
     }));
   }
 
@@ -815,6 +832,7 @@ export class PostgresStorage implements IStorage {
     const row = res.rows[0];
     return {
       id: row.id,
+      customerId: row.customer_id,
       name: row.name,
       email: row.email,
       phone: row.phone,
@@ -824,12 +842,13 @@ export class PostgresStorage implements IStorage {
       zipCode: row.zip_code,
       company: row.company,
       isActive: row.is_active,
-      cxType: row.cx_type,
       gst: row.gst,
-      idProof: row.id_proof,
+      pan: row.pan,
       website: row.website,
-      addressProof: row.address_proof,
-      repeatCx: row.repeat_cx
+      createdAt: row.created_at,
+      createdBy: row.created_by,
+      updatedAt: row.updated_at,
+      updatedBy: row.updated_by
     };
   }
 
@@ -839,6 +858,7 @@ export class PostgresStorage implements IStorage {
     const row = res.rows[0];
     return {
       id: row.id,
+      customerId: row.customer_id,
       name: row.name,
       email: row.email,
       phone: row.phone,
@@ -848,22 +868,35 @@ export class PostgresStorage implements IStorage {
       zipCode: row.zip_code,
       company: row.company,
       isActive: row.is_active,
-      cxType: row.cx_type,
       gst: row.gst,
-      idProof: row.id_proof,
+      pan: row.pan,
       website: row.website,
-      addressProof: row.address_proof,
-      repeatCx: row.repeat_cx
+      createdAt: row.created_at,
+      createdBy: row.created_by,
+      updatedAt: row.updated_at,
+      updatedBy: row.updated_by
     };
   }
 
   async createClient(insertClient: InsertClient): Promise<Client> {
+    // Generate customerId: CX000001, CX000002, etc.
+    const result = await pool.query(`
+      SELECT COALESCE(MAX(CAST(SUBSTRING(customer_id FROM 3) AS INTEGER)), 0) as max_id
+      FROM clients
+    `);
+    const maxId = Number(result.rows[0].max_id);
+    const nextId = maxId + 1;
+    const customerId = `CX${nextId.toString().padStart(6, '0')}`;
+
+    const currentTime = new Date().toISOString();
+
     const res = await pool.query(
       `INSERT INTO clients
-        (name, email, phone, address, city, state, zip_code, company, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        (customer_id, name, email, phone, address, city, state, zip_code, company, is_active, gst, pan, website, created_at, created_by, updated_at, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
        RETURNING *`,
       [
+        customerId,
         insertClient.name,
         insertClient.email,
         insertClient.phone ?? null,
@@ -872,13 +905,21 @@ export class PostgresStorage implements IStorage {
         insertClient.state ?? null,
         insertClient.zipCode ?? null,
         insertClient.company ?? null,
-        insertClient.isActive ?? true
+        insertClient.isActive ?? true,
+        insertClient.gst,
+        insertClient.pan,
+        insertClient.website ?? null,
+        currentTime,
+        null, // createdBy - will be set from session in route
+        currentTime,
+        null  // updatedBy - will be set from session in route
       ]
     );
 
     const row = res.rows[0];
     return {
       id: row.id,
+      customerId: row.customer_id,
       name: row.name,
       email: row.email,
       phone: row.phone,
@@ -887,7 +928,14 @@ export class PostgresStorage implements IStorage {
       state: row.state,
       zipCode: row.zip_code,
       company: row.company,
-      isActive: row.is_active
+      isActive: row.is_active,
+      gst: row.gst,
+      pan: row.pan,
+      website: row.website,
+      createdAt: row.created_at,
+      createdBy: row.created_by,
+      updatedAt: row.updated_at,
+      updatedBy: row.updated_by
     };
   }
 
@@ -903,6 +951,15 @@ export class PostgresStorage implements IStorage {
       } else if (key === "isActive") {
         fields.push(`is_active = $${idx++}`);
         values.push(value);
+      } else if (key === "pan") {
+        fields.push(`pan = $${idx++}`);
+        values.push(value);
+      } else if (key === "updatedAt") {
+        fields.push(`updated_at = $${idx++}`);
+        values.push(value);
+      } else if (key === "updatedBy") {
+        fields.push(`updated_by = $${idx++}`);
+        values.push(value);
       } else {
         fields.push(`${key} = $${idx++}`);
         values.push(value);
@@ -916,6 +973,7 @@ export class PostgresStorage implements IStorage {
     const row = res.rows[0];
     return {
       id: row.id,
+      customerId: row.customer_id,
       name: row.name,
       email: row.email,
       phone: row.phone,
@@ -924,7 +982,14 @@ export class PostgresStorage implements IStorage {
       state: row.state,
       zipCode: row.zip_code,
       company: row.company,
-      isActive: row.is_active
+      isActive: row.is_active,
+      gst: row.gst,
+      pan: row.pan,
+      website: row.website,
+      createdAt: row.created_at,
+      createdBy: row.created_by,
+      updatedAt: row.updated_at,
+      updatedBy: row.updated_by
     };
   }
 
@@ -1058,14 +1123,17 @@ export class PostgresStorage implements IStorage {
       adsIds: row.ads_ids || [],
       customerId: row.customer_id,
       orderId: row.order_id,
-      orderType: row.order_status, // Note: column is still order_status in DB but maps to orderType
+      orderType: row.order_type,
       requiredPieces: row.required_pieces,
       deliveredPieces: row.delivered_pieces,
       paymentPerPiece: row.payment_per_piece,
       securityDeposit: row.security_deposit,
-      totalPaymentReceived: row.total_payment, // Note: column is still total_payment in DB but maps to totalPaymentReceived
+      totalPaymentReceived: row.total_payment,
       contractDate: row.contract_date,
       deliveryDate: row.delivery_date,
+      estimatedDeliveryDate: row.estimated_delivery_date,
+      orderDeliveryStatus: row.order_delivery_status,
+      discountPercentage: row.discount_percentage,
       quotedPrice: row.quoted_price,
       discount: row.discount,
       productType: row.prod_type,
@@ -1080,22 +1148,24 @@ export class PostgresStorage implements IStorage {
     const row = res.rows[0];
     return {
       id: row.id,
-      adsId: row.ads_id,
       customerId: row.customer_id,
+      adsIds: row.ads_ids || [],
       orderId: row.order_id,
-      orderStatus: row.order_status,
+      orderType: row.order_type,
       requiredPieces: row.required_pieces,
       deliveredPieces: row.delivered_pieces,
       paymentPerPiece: row.payment_per_piece,
       securityDeposit: row.security_deposit,
-      totalPayment: row.total_payment,
+      totalPaymentReceived: row.total_payment,
       contractDate: row.contract_date,
       deliveryDate: row.delivery_date,
+      estimatedDeliveryDate: row.estimated_delivery_date,
+      orderDeliveryStatus: row.order_delivery_status,
+      discountPercentage: row.discount_percentage,
       quotedPrice: row.quoted_price,
       discount: row.discount,
-      prodId: row.prod_id,
-      prodName: row.prod_name,
-      prodCategory: row.prod_category,
+      productType: row.prod_type,
+      createdBy: row.created_by,
       createdAt: row.created_at
     };
   }
@@ -1103,26 +1173,31 @@ export class PostgresStorage implements IStorage {
   async createOrder(insertOrder: InsertOrder): Promise<Order> {
     const res = await pool.query(
       `INSERT INTO orders
-        (ads_id, customer_id, order_id, order_status, required_pieces, delivered_pieces, payment_per_piece, security_deposit, total_payment, contract_date, delivery_date, quoted_price, discount, prod_id, prod_name, prod_category, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        (ads_ids, customer_id, order_id, order_type, required_pieces, delivered_pieces,
+         payment_per_piece, security_deposit, total_payment, contract_date,
+         delivery_date, estimated_delivery_date, order_delivery_status, discount_percentage,
+         quoted_price, discount, prod_type, created_by, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
        RETURNING *`,
       [
-        insertOrder.adsId,
+        insertOrder.adsIds,
         insertOrder.customerId,
         insertOrder.orderId,
-        insertOrder.orderStatus,
+        insertOrder.orderType,
         insertOrder.requiredPieces,
         insertOrder.deliveredPieces ?? 0,
         insertOrder.paymentPerPiece,
         insertOrder.securityDeposit ?? null,
-        insertOrder.totalPayment,
+        insertOrder.totalPaymentReceived,
         insertOrder.contractDate,
         insertOrder.deliveryDate ?? null,
+        insertOrder.estimatedDeliveryDate ?? null,
+        insertOrder.orderDeliveryStatus ?? 'pending',
+        insertOrder.discountPercentage ?? null,
         insertOrder.quotedPrice ?? null,
         insertOrder.discount ?? null,
-        insertOrder.prodId ?? null,
-        insertOrder.prodName ?? null,
-        insertOrder.prodCategory ?? null,
+        insertOrder.productType ?? null,
+        insertOrder.createdBy ?? null,
         insertOrder.createdAt ?? new Date().toISOString()
       ]
     );
@@ -1130,22 +1205,24 @@ export class PostgresStorage implements IStorage {
     const row = res.rows[0];
     return {
       id: row.id,
-      adsId: row.ads_id,
       customerId: row.customer_id,
+      adsIds: row.ads_ids || [],
       orderId: row.order_id,
-      orderStatus: row.order_status,
+      orderType: row.order_type,
       requiredPieces: row.required_pieces,
       deliveredPieces: row.delivered_pieces,
       paymentPerPiece: row.payment_per_piece,
       securityDeposit: row.security_deposit,
-      totalPayment: row.total_payment,
+      totalPaymentReceived: row.total_payment,
       contractDate: row.contract_date,
       deliveryDate: row.delivery_date,
+      estimatedDeliveryDate: row.estimated_delivery_date,
+      orderDeliveryStatus: row.order_delivery_status,
+      discountPercentage: row.discount_percentage,
       quotedPrice: row.quoted_price,
       discount: row.discount,
-      prodId: row.prod_id,
-      prodName: row.prod_name,
-      prodCategory: row.prod_category,
+      productType: row.prod_type,
+      createdBy: row.created_by,
       createdAt: row.created_at
     };
   }
@@ -1156,8 +1233,8 @@ export class PostgresStorage implements IStorage {
     const values = [];
     let idx = 1;
     for (const [key, value] of Object.entries(orderUpdate)) {
-      if (key === "adsId") {
-        fields.push(`ads_id = $${idx++}`);
+      if (key === "adsIds") {
+        fields.push(`ads_ids = $${idx++}`);
         values.push(value);
       } else if (key === "customerId") {
         fields.push(`customer_id = $${idx++}`);
@@ -1165,8 +1242,8 @@ export class PostgresStorage implements IStorage {
       } else if (key === "orderId") {
         fields.push(`order_id = $${idx++}`);
         values.push(value);
-      } else if (key === "orderStatus") {
-        fields.push(`order_status = $${idx++}`);
+      } else if (key === "orderType") {
+        fields.push(`order_type = $${idx++}`);
         values.push(value);
       } else if (key === "requiredPieces") {
         fields.push(`required_pieces = $${idx++}`);
@@ -1180,7 +1257,7 @@ export class PostgresStorage implements IStorage {
       } else if (key === "securityDeposit") {
         fields.push(`security_deposit = $${idx++}`);
         values.push(value);
-      } else if (key === "totalPayment") {
+      } else if (key === "totalPaymentReceived") {
         fields.push(`total_payment = $${idx++}`);
         values.push(value);
       } else if (key === "contractDate") {
@@ -1189,17 +1266,23 @@ export class PostgresStorage implements IStorage {
       } else if (key === "deliveryDate") {
         fields.push(`delivery_date = $${idx++}`);
         values.push(value);
+      } else if (key === "estimatedDeliveryDate") {
+        fields.push(`estimated_delivery_date = $${idx++}`);
+        values.push(value);
+      } else if (key === "orderDeliveryStatus") {
+        fields.push(`order_delivery_status = $${idx++}`);
+        values.push(value);
+      } else if (key === "discountPercentage") {
+        fields.push(`discount_percentage = $${idx++}`);
+        values.push(value);
       } else if (key === "quotedPrice") {
         fields.push(`quoted_price = $${idx++}`);
         values.push(value);
-      } else if (key === "prodId") {
-        fields.push(`prod_id = $${idx++}`);
+      } else if (key === "productType") {
+        fields.push(`prod_type = $${idx++}`);
         values.push(value);
-      } else if (key === "prodName") {
-        fields.push(`prod_name = $${idx++}`);
-        values.push(value);
-      } else if (key === "prodCategory") {
-        fields.push(`prod_category = $${idx++}`);
+      } else if (key === "createdBy") {
+        fields.push(`created_by = $${idx++}`);
         values.push(value);
       } else if (key === "createdAt") {
         fields.push(`created_at = $${idx++}`);
@@ -1217,28 +1300,123 @@ export class PostgresStorage implements IStorage {
     const row = res.rows[0];
     return {
       id: row.id,
-      adsId: row.ads_id,
       customerId: row.customer_id,
+      adsIds: row.ads_ids || [],
       orderId: row.order_id,
-      orderStatus: row.order_status,
+      orderType: row.order_type,
       requiredPieces: row.required_pieces,
       deliveredPieces: row.delivered_pieces,
       paymentPerPiece: row.payment_per_piece,
       securityDeposit: row.security_deposit,
-      totalPayment: row.total_payment,
+      totalPaymentReceived: row.total_payment,
       contractDate: row.contract_date,
       deliveryDate: row.delivery_date,
+      estimatedDeliveryDate: row.estimated_delivery_date,
+      orderDeliveryStatus: row.order_delivery_status,
+      discountPercentage: row.discount_percentage,
       quotedPrice: row.quoted_price,
       discount: row.discount,
-      prodId: row.prod_id,
-      prodName: row.prod_name,
-      prodCategory: row.prod_category,
+      productType: row.prod_type,
+      createdBy: row.created_by,
       createdAt: row.created_at
     };
   }
 
   async deleteOrder(id: number): Promise<boolean> {
     const res = await pool.query("DELETE FROM orders WHERE id = $1", [id]);
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  // Order Items
+  async getOrderItems(orderId: string): Promise<OrderItem[]> {
+    const res = await pool.query(
+      "SELECT * FROM order_items WHERE order_id = $1 ORDER BY created_at",
+      [orderId]
+    );
+    return res.rows.map(row => ({
+      id: row.id,
+      orderId: row.order_id,
+      adsId: row.ads_id,
+      sellingPrice: row.selling_price,
+      rentalPricePerMonth: row.rental_price_per_month,
+      createdAt: row.created_at
+    }));
+  }
+
+  async createOrderItem(item: InsertOrderItem): Promise<OrderItem> {
+    const res = await pool.query(
+      `INSERT INTO order_items
+        (order_id, ads_id, selling_price, rental_price_per_month, created_at)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [
+        item.orderId,
+        item.adsId,
+        item.sellingPrice,
+        item.rentalPricePerMonth ?? null,
+        item.createdAt
+      ]
+    );
+    
+    const row = res.rows[0];
+    return {
+      id: row.id,
+      orderId: row.order_id,
+      adsId: row.ads_id,
+      sellingPrice: row.selling_price,
+      rentalPricePerMonth: row.rental_price_per_month,
+      createdAt: row.created_at
+    };
+  }
+
+  async createOrderItems(items: InsertOrderItem[]): Promise<OrderItem[]> {
+    const client = await pool.connect();
+    const created: OrderItem[] = [];
+    
+    try {
+      await client.query('BEGIN');
+      
+      for (const item of items) {
+        const res = await client.query(
+          `INSERT INTO order_items
+            (order_id, ads_id, selling_price, rental_price_per_month, created_at)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING *`,
+          [
+            item.orderId,
+            item.adsId,
+            item.sellingPrice,
+            item.rentalPricePerMonth ?? null,
+            item.createdAt
+          ]
+        );
+        
+        const row = res.rows[0];
+        created.push({
+          id: row.id,
+          orderId: row.order_id,
+          adsId: row.ads_id,
+          sellingPrice: row.selling_price,
+          rentalPricePerMonth: row.rental_price_per_month,
+          createdAt: row.created_at
+        });
+      }
+      
+      await client.query('COMMIT');
+      return created;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async deleteOrderItems(orderId: string): Promise<boolean> {
+    const res = await pool.query(
+      "DELETE FROM order_items WHERE order_id = $1",
+      [orderId]
+    );
     return (res.rowCount ?? 0) > 0;
   }
 

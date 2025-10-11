@@ -12,6 +12,7 @@ import type { Client } from "@shared/schema";
 export default function Clients() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isClientFormOpen, setIsClientFormOpen] = useState(false);
+  const [editingClient, setEditingClient] = useState<Client | undefined>(undefined);
 
   const { data: clients, isLoading } = useQuery<Client[]>({
     queryKey: ["/api/clients"],
@@ -61,7 +62,10 @@ export default function Clients() {
             <h2 className="text-2xl font-bold text-gray-900">Clients</h2>
             <p className="text-gray-600">Manage your client relationships</p>
           </div>
-          <Button onClick={() => setIsClientFormOpen(true)}>
+          <Button onClick={() => {
+            setEditingClient(undefined);
+            setIsClientFormOpen(true);
+          }}>
             <Plus className="mr-2 h-4 w-4" />
             Add Client
           </Button>
@@ -96,7 +100,10 @@ export default function Clients() {
               <p className="text-gray-600 mb-4">
                 {searchTerm ? "Try adjusting your search terms" : "Get started by adding your first client"}
               </p>
-              <Button onClick={() => setIsClientFormOpen(true)}>
+              <Button onClick={() => {
+                setEditingClient(undefined);
+                setIsClientFormOpen(true);
+              }}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add Client
               </Button>
@@ -113,16 +120,24 @@ export default function Clients() {
                         <Users className="h-6 w-6 text-gray-600" />
                       </div>
                       <div>
-                        <CardTitle className="text-lg">{client.name}</CardTitle>
-                        {client.company && (
-                          <p className="text-sm text-gray-600 flex items-center">
-                            <Building2 className="h-3 w-3 mr-1" />
-                            {client.company}
-                          </p>
-                        )}
-                      </div>
+                          <CardTitle className="text-lg">{client.name}</CardTitle>
+                          <p className="text-sm text-blue-600 font-medium">ID: {client.customerId}</p>
+                          {client.company && (
+                            <p className="text-sm text-gray-600 flex items-center">
+                              <Building2 className="h-3 w-3 mr-1" />
+                              {client.company}
+                            </p>
+                          )}
+                        </div>
                     </div>
-                    <Button variant="ghost" size="sm">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setEditingClient(client);
+                        setIsClientFormOpen(true);
+                      }}
+                    >
                       <Edit className="h-4 w-4" />
                     </Button>
                   </div>
@@ -154,6 +169,16 @@ export default function Clients() {
                         </div>
                       </div>
                     )}
+
+                    {(client.gst || client.pan) && (
+                      <div className="flex items-start space-x-3">
+                        <div className="h-4 w-4 text-gray-400 mt-0.5">📄</div>
+                        <div className="text-sm text-gray-900">
+                          {client.gst && <div>GST: {client.gst}</div>}
+                          {client.pan && <div>PAN: {client.pan}</div>}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -163,14 +188,24 @@ export default function Clients() {
       </div>
 
       {/* Add Client Dialog */}
-      <Dialog open={isClientFormOpen} onOpenChange={setIsClientFormOpen}>
+      <Dialog open={isClientFormOpen} onOpenChange={(open) => {
+        setIsClientFormOpen(open);
+        if (!open) setEditingClient(undefined);
+      }}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Add New Client</DialogTitle>
+            <DialogTitle>{editingClient ? "Edit Client" : "Add New Client"}</DialogTitle>
           </DialogHeader>
           <ClientForm
-            onSuccess={() => setIsClientFormOpen(false)}
-            onCancel={() => setIsClientFormOpen(false)}
+            client={editingClient}
+            onSuccess={() => {
+              setIsClientFormOpen(false);
+              setEditingClient(undefined);
+            }}
+            onCancel={() => {
+              setIsClientFormOpen(false);
+              setEditingClient(undefined);
+            }}
           />
         </DialogContent>
       </Dialog>

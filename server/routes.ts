@@ -5,8 +5,10 @@ import {
   insertProductSchema,
   updateProductSchema,
   insertClientSchema,
+  updateClientSchema,
   insertProductDateEventSchema,
   baseInsertOrderSchema,
+  insertOrderItemSchema,
   insertSalesBuySchema,
   insertSalesRentSchema
 } from "@shared/schema";
@@ -252,6 +254,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get available products for orders (only INVENTORY status products)
+  app.get("/api/products/available", async (req, res) => {
+    try {
+      const products = await storage.getProducts();
+      const availableProducts = products.filter(p =>
+        p.orderStatus === "INVENTORY" &&
+        p.prodStatus === "available" &&
+        !p.isDeleted
+      );
+      res.json(availableProducts);
+    } catch (error) {
+      console.error('Failed to fetch available products:', error);
+      res.status(500).json({ message: "Failed to fetch available products" });
+    }
+  });
+
   app.get("/api/products/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -447,6 +465,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Customer search endpoint with multi-field filtering (must be before :id route)
+  app.get("/api/clients/search", async (req, res) => {
+    try {
+      const { q, field } = req.query;
+      
+      if (!q || typeof q !== 'string') {
+        return res.status(400).json({ message: "Search query required" });
+      }
+
+      const clients = await storage.getClients();
+      const query = q.toLowerCase();
+      
+      let filtered = clients;
+      
+      if (field === 'pan' && q.length > 0) {
+        filtered = clients.filter(c => c.pan?.toUpperCase().includes(q.toUpperCase()));
+      } else if (field === 'gst' && q.length > 0) {
+        filtered = clients.filter(c => c.gst?.toUpperCase().includes(q.toUpperCase()));
+      } else if (field === 'id' && q.length > 0) {
+        filtered = clients.filter(c => c.customerId.toLowerCase().includes(query));
+      } else {
+        // Default: search by name
+        filtered = clients.filter(c => c.name.toLowerCase().includes(query));
+      }
+      
+      res.json(filtered);
+    } catch (error) {
+      console.error('Client search error:', error);
+      res.status(500).json({ message: "Failed to search clients" });
+    }
+  });
+
   app.get("/api/clients/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -462,25 +512,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/clients", async (req, res) => {
     try {
+      console.log('Client creation request body:', JSON.stringify(req.body, null, 2));
+      console.log('zipCode type:', typeof req.body.zipCode, 'value:', req.body.zipCode);
       const clientData = insertClientSchema.parse(req.body);
+      console.log('Parsed client data:', JSON.stringify(clientData, null, 2));
       const client = await storage.createClient(clientData);
       res.status(201).json(client);
     } catch (error) {
-      res.status(400).json({ message: "Invalid client data" });
+      console.error('Client creation error:', error);
+      res.status(400).json({ message: "Invalid client data", error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
   app.put("/api/clients/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const clientData = insertClientSchema.partial().parse(req.body);
+      const clientData = updateClientSchema.partial().parse(req.body);
       const client = await storage.updateClient(id, clientData);
       if (!client) {
         return res.status(404).json({ message: "Client not found" });
       }
       res.json(client);
     } catch (error) {
-      res.status(400).json({ message: "Invalid client data" });
+      console.error('Client update error:', error);
+      res.status(400).json({
+        message: "Invalid client data",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  app.patch("/api/clients/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      console.log('Client update request for ID:', id);
+      console.log('Update data:', JSON.stringify(req.body, null, 2));
+      const clientData = updateClientSchema.parse(req.body);
+      console.log('Validated client data:', JSON.stringify(clientData, null, 2));
+      const client = await storage.updateClient(id, clientData);
+      if (!client) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+      res.json(client);
+    } catch (error) {
+      console.error('Client update error:', error);
+      res.status(400).json({
+        message: "Invalid client data",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 
@@ -523,40 +602,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/orders", async (req, res) => {
     try {
-      const orderData = baseInsertOrderSchema.parse(req.body);
-
-      // Validate that all adsIds exist and are available
-      for (const adsId of orderData.adsIds) {
-        const product = await storage.getProductByAdsId(adsId);
-        if (!product) {
+      const { products, ...orderFields } = req.body;
+      
+      // Validate products array exists
+      if (!products || !Array.isArray(products) || products.length === 0) {
+        return res.status(400).json({
+          message: "Products array is required and must contain at least one product"
+        });
+      }
+      
+      // Validate all products are available
+      for (const product of products) {
+        const prod = await storage.getProductByAdsId(product.adsId);
+        if (!prod) {
           return res.status(400).json({
-            message: `Product with adsId ${adsId} not found`
+            message: `Product ${product.adsId} not found`
           });
         }
-        if (product.orderStatus !== "INVENTORY") {
+        if (prod.orderStatus !== "INVENTORY") {
           return res.status(400).json({
-            message: `Product ${adsId} is not available (current status: ${product.orderStatus})`
+            message: `Product ${product.adsId} is not available (current status: ${prod.orderStatus})`
+          });
+        }
+        if (prod.prodStatus !== "available") {
+          return res.status(400).json({
+            message: `Product ${product.adsId} is not in available status (current: ${prod.prodStatus})`
           });
         }
       }
+      
+      // Prepare order data with proper decimal precision using Math.round
+      const roundTo2Decimals = (num: number) => Math.round(num * 100) / 100;
+      
+      const adsIds = products.map(p => p.adsId);
+      const subtotal = roundTo2Decimals(products.reduce((sum, p) => sum + parseFloat(p.price), 0));
+      const discountPercentage = roundTo2Decimals(parseFloat(orderFields.discountPercentage) || 0);
+      const discountAmount = roundTo2Decimals(subtotal * (discountPercentage / 100));
+      const securityDeposit = roundTo2Decimals(parseFloat(orderFields.securityDeposit) || 0);
+      const totalPayment = roundTo2Decimals(subtotal - discountAmount + securityDeposit);
+      
+      const orderData = {
+        ...orderFields,
+        adsIds,
+        requiredPieces: products.length,
+        deliveredPieces: 0,
+        paymentPerPiece: roundTo2Decimals(products.length > 0 ? subtotal / products.length : 0),
+        totalPaymentReceived: totalPayment,
+        quotedPrice: subtotal,
+        discountPercentage: discountPercentage,
+        securityDeposit: securityDeposit > 0 ? securityDeposit : undefined,
+        orderDeliveryStatus: orderFields.orderDeliveryStatus || 'pending',
+        createdAt: new Date().toISOString()
+      };
+
+      // Validate with schema
+      const validatedOrder = baseInsertOrderSchema.parse(orderData);
 
       // Create the order
-      const order = await storage.createOrder(orderData);
+      const order = await storage.createOrder(validatedOrder);
 
-      // Update product statuses for all products in the order
+      // Create order items
+      const orderItems = products.map(product => ({
+        orderId: order.orderId,
+        adsId: product.adsId,
+        sellingPrice: parseFloat(product.price),
+        rentalPricePerMonth: orderData.orderType === "RENT" ? parseFloat(product.price) : undefined,
+        createdAt: new Date().toISOString()
+      }));
+      
+      await storage.createOrderItems(orderItems);
+      
+      // Update product statuses
       const newOrderStatus = orderData.orderType; // "RENT" or "PURCHASE"
       const newProdStatus = orderData.orderType === "RENT" ? "leased" : "sold";
 
-      for (const adsId of orderData.adsIds) {
+      for (const adsId of adsIds) {
         // Update both orderStatus and prodStatus
         await storage.updateProductOrderStatus(adsId, newOrderStatus);
         await storage.updateProductProdStatus(adsId, newProdStatus);
 
         // Create product date event for each product
         await storage.createProductDateEvent({
-          adsId: adsId,
+          adsId,
           clientId: orderData.customerId,
-          eventType: orderData.orderType === "RENT" ? "leased" : "sold",
+          eventType: orderData.orderType === "RENT" ? "first_sale_to_customer" : "first_sale_to_customer",
           eventDate: orderData.contractDate,
           notes: `Order ${order.orderId} - ${orderData.orderType}`,
           createdAt: new Date().toISOString()
@@ -566,7 +695,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(order);
     } catch (error) {
       console.error('Order creation error:', error);
-      res.status(400).json({ message: "Invalid order data" });
+      res.status(400).json({
+        message: "Failed to create order",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 

@@ -58,6 +58,45 @@ export const ENUMS = {
     PAN: "PAN"
   } as const,
 
+  INDIAN_STATES: {
+    ANDHRA_PRADESH: "Andhra Pradesh",
+    ARUNACHAL_PRADESH: "Arunachal Pradesh",
+    ASSAM: "Assam",
+    BIHAR: "Bihar",
+    CHHATTISGARH: "Chhattisgarh",
+    GOA: "Goa",
+    GUJARAT: "Gujarat",
+    HARYANA: "Haryana",
+    HIMACHAL_PRADESH: "Himachal Pradesh",
+    JHARKHAND: "Jharkhand",
+    KARNATAKA: "Karnataka",
+    KERALA: "Kerala",
+    MADHYA_PRADESH: "Madhya Pradesh",
+    MAHARASHTRA: "Maharashtra",
+    MANIPUR: "Manipur",
+    MEGHALAYA: "Meghalaya",
+    MIZORAM: "Mizoram",
+    NAGALAND: "Nagaland",
+    ODISHA: "Odisha",
+    PUNJAB: "Punjab",
+    RAJASTHAN: "Rajasthan",
+    SIKKIM: "Sikkim",
+    TAMIL_NADU: "Tamil Nadu",
+    TELANGANA: "Telangana",
+    TRIPURA: "Tripura",
+    UTTAR_PRADESH: "Uttar Pradesh",
+    UTTARAKHAND: "Uttarakhand",
+    WEST_BENGAL: "West Bengal",
+    DELHI: "Delhi",
+    JAMMU_AND_KASHMIR: "Jammu and Kashmir",
+    LADAKH: "Ladakh",
+    PUDUCHERRY: "Puducherry",
+    CHANDIGARH: "Chandigarh",
+    ANDAMAN_AND_NICOBAR_ISLANDS: "Andaman and Nicobar Islands",
+    DADRA_AND_NAGAR_HAVELI_AND_DAMAN_AND_DIU: "Dadra and Nagar Haveli and Daman and Diu",
+    LAKSHADWEEP: "Lakshadweep"
+  } as const,
+
   // Sales enums
   PAYMENT_STATUS: {
     PENDING: "Pending",
@@ -108,3 +147,4 @@ export type ClientType = typeof ENUMS.CLIENT_TYPE[keyof typeof ENUMS.CLIENT_TYPE
 export type IdProof = typeof ENUMS.ID_PROOF[keyof typeof ENUMS.ID_PROOF];
 export type PaymentStatus = typeof ENUMS.PAYMENT_STATUS[keyof typeof ENUMS.PAYMENT_STATUS];
 export type EventType = typeof ENUMS.EVENT_TYPES[keyof typeof ENUMS.EVENT_TYPES];
+export type IndianState = typeof ENUMS.INDIAN_STATES[keyof typeof ENUMS.INDIAN_STATES];
