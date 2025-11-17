@@ -879,7 +879,8 @@ export class PostgresStorage implements IStorage {
       updatedAt: row.updated_at,
       updatedBy: row.updated_by
     };
-  }
+  } 
+  //okokok
 
   async createClient(insertClient: InsertClient): Promise<Client> {
     // Generate customerId: CX000001, CX000002, etc.
@@ -919,6 +920,7 @@ export class PostgresStorage implements IStorage {
         null  // updatedBy - will be set from session in route
       ]
     );
+    //uuuuuuuutou
 
     const row = res.rows[0];
     return {
