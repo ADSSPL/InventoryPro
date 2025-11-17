@@ -692,6 +692,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Update client's total security money if security deposit was collected
+      if (securityDeposit > 0) {
+        await storage.addSecurityMoneyToClient(orderData.customerId, securityDeposit);
+      }
+
       res.status(201).json(order);
     } catch (error) {
       console.error('Order creation error:', error);

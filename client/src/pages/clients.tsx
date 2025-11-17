@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Plus, Users, Mail, Phone, MapPin, Building2, Edit } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Search, Plus, Users, Edit } from "lucide-react";
 import { useState } from "react";
 import ClientForm from "@/components/forms/client-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -37,17 +39,41 @@ export default function Clients() {
           </div>
         </header>
         <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[...Array(6)].map((_, i) => (
-              <Card key={i}>
-                <CardContent className="p-6">
-                  <Skeleton className="h-32 w-full mb-4" />
-                  <Skeleton className="h-6 w-3/4 mb-2" />
-                  <Skeleton className="h-4 w-1/2" />
-                </CardContent>
-              </Card>
-            ))}
+          <div className="mb-6">
+            <Skeleton className="h-10 w-full max-w-md" />
           </div>
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Customer ID</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Company</TableHead>
+                    <TableHead className="text-right">Total Security Money</TableHead>
+                    <TableHead>GST/PAN</TableHead>
+                    <TableHead className="w-[100px]">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...Array(6)].map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                      <TableCell className="text-right"><Skeleton className="h-4 w-24 ml-auto" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
@@ -91,7 +117,7 @@ export default function Clients() {
           </div>
         </div>
 
-        {/* Clients Grid */}
+        {/* Clients Table */}
         {filteredClients.length === 0 ? (
           <Card>
             <CardContent className="p-12 text-center">
@@ -110,80 +136,74 @@ export default function Clients() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredClients.map((client) => (
-              <Card key={client.id} className="border border-gray-100 hover:shadow-md transition-shadow">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
-                        <Users className="h-6 w-6 text-gray-600" />
-                      </div>
-                      <div>
-                          <CardTitle className="text-lg">{client.name}</CardTitle>
-                          <p className="text-sm text-blue-600 font-medium">ID: {client.customerId}</p>
-                          {client.company && (
-                            <p className="text-sm text-gray-600 flex items-center">
-                              <Building2 className="h-3 w-3 mr-1" />
-                              {client.company}
-                            </p>
-                          )}
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Customer ID</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Company</TableHead>
+                    <TableHead className="text-right">Total Security Money</TableHead>
+                    <TableHead>GST/PAN</TableHead>
+                    <TableHead className="w-[100px]">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredClients.map((client) => (
+                    <TableRow key={client.id} className="hover:bg-gray-50">
+                      <TableCell>
+                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                          {client.customerId}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">{client.name}</div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-gray-600">{client.email}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm">{client.phone || '-'}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-gray-600">{client.company || '-'}</span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="font-semibold text-green-600">
+                          ₹{parseFloat(client.totalSecurityMoney).toLocaleString('en-IN', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                          })}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-xs space-y-1">
+                          {client.gst && <div className="text-gray-600">GST: {client.gst}</div>}
+                          {client.pan && <div className="text-gray-600">PAN: {client.pan}</div>}
+                          {!client.gst && !client.pan && <span className="text-gray-400">-</span>}
                         </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setEditingClient(client);
-                        setIsClientFormOpen(true);
-                      }}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div className="flex items-center space-x-3">
-                      <Mail className="h-4 w-4 text-gray-400" />
-                      <span className="text-sm text-gray-900">{client.email}</span>
-                    </div>
-                    
-                    {client.phone && (
-                      <div className="flex items-center space-x-3">
-                        <Phone className="h-4 w-4 text-gray-400" />
-                        <span className="text-sm text-gray-900">{client.phone}</span>
-                      </div>
-                    )}
-                    
-                    {(client.address || client.city || client.state) && (
-                      <div className="flex items-start space-x-3">
-                        <MapPin className="h-4 w-4 text-gray-400 mt-0.5" />
-                        <div className="text-sm text-gray-900">
-                          {client.address && <div>{client.address}</div>}
-                          {(client.city || client.state) && (
-                            <div>
-                              {client.city}{client.city && client.state && ', '}{client.state} {client.zipCode}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {(client.gst || client.pan) && (
-                      <div className="flex items-start space-x-3">
-                        <div className="h-4 w-4 text-gray-400 mt-0.5">📄</div>
-                        <div className="text-sm text-gray-900">
-                          {client.gst && <div>GST: {client.gst}</div>}
-                          {client.pan && <div>PAN: {client.pan}</div>}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditingClient(client);
+                            setIsClientFormOpen(true);
+                          }}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         )}
       </div>
 

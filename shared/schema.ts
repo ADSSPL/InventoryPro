@@ -61,6 +61,7 @@ export const clients = pgTable("clients", {
   gst: text("gst"), // 15-digit GST number
   pan: text("pan"), // 10-digit PAN number
   website: text("website"),
+  totalSecurityMoney: decimal("total_security_money", { precision: 10, scale: 2 }).notNull().default("0"), // Cumulative security deposits
   createdAt: text("created_at"), // ISO date string
   createdBy: text("created_by"), // emp_id
   updatedAt: text("updated_at"), // ISO date string
