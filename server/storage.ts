@@ -819,6 +819,7 @@ export class PostgresStorage implements IStorage {
       gst: row.gst,
       pan: row.pan,
       website: row.website,
+      totalSecurityMoney: row.total_security_money,
       createdAt: row.created_at,
       createdBy: row.created_by,
       updatedAt: row.updated_at,
@@ -845,6 +846,7 @@ export class PostgresStorage implements IStorage {
       gst: row.gst,
       pan: row.pan,
       website: row.website,
+      totalSecurityMoney: row.total_security_money,
       createdAt: row.created_at,
       createdBy: row.created_by,
       updatedAt: row.updated_at,
@@ -871,6 +873,7 @@ export class PostgresStorage implements IStorage {
       gst: row.gst,
       pan: row.pan,
       website: row.website,
+      totalSecurityMoney: row.total_security_money,
       createdAt: row.created_at,
       createdBy: row.created_by,
       updatedAt: row.updated_at,
@@ -892,8 +895,8 @@ export class PostgresStorage implements IStorage {
 
     const res = await pool.query(
       `INSERT INTO clients
-        (customer_id, name, email, phone, address, city, state, zip_code, company, is_active, gst, pan, website, created_at, created_by, updated_at, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        (customer_id, name, email, phone, address, city, state, zip_code, company, is_active, gst, pan, website, total_security_money, created_at, created_by, updated_at, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
        RETURNING *`,
       [
         customerId,
@@ -909,6 +912,7 @@ export class PostgresStorage implements IStorage {
         insertClient.gst,
         insertClient.pan,
         insertClient.website ?? null,
+        0, // totalSecurityMoney starts at 0
         currentTime,
         null, // createdBy - will be set from session in route
         currentTime,
@@ -932,6 +936,7 @@ export class PostgresStorage implements IStorage {
       gst: row.gst,
       pan: row.pan,
       website: row.website,
+      totalSecurityMoney: row.total_security_money,
       createdAt: row.created_at,
       createdBy: row.created_by,
       updatedAt: row.updated_at,
@@ -953,6 +958,9 @@ export class PostgresStorage implements IStorage {
         values.push(value);
       } else if (key === "pan") {
         fields.push(`pan = $${idx++}`);
+        values.push(value);
+      } else if (key === "totalSecurityMoney") {
+        fields.push(`total_security_money = $${idx++}`);
         values.push(value);
       } else if (key === "updatedAt") {
         fields.push(`updated_at = $${idx++}`);
@@ -986,6 +994,7 @@ export class PostgresStorage implements IStorage {
       gst: row.gst,
       pan: row.pan,
       website: row.website,
+      totalSecurityMoney: row.total_security_money,
       createdAt: row.created_at,
       createdBy: row.created_by,
       updatedAt: row.updated_at,
@@ -995,6 +1004,17 @@ export class PostgresStorage implements IStorage {
 
   async deleteClient(id: number): Promise<boolean> {
     const res = await pool.query("DELETE FROM clients WHERE id = $1", [id]);
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async addSecurityMoneyToClient(clientId: number, securityAmount: number): Promise<boolean> {
+    const res = await pool.query(
+      `UPDATE clients
+       SET total_security_money = total_security_money + $1,
+           updated_at = $2
+       WHERE id = $3`,
+      [securityAmount, new Date().toISOString(), clientId]
+    );
     return (res.rowCount ?? 0) > 0;
   }
 
