@@ -854,6 +854,10 @@ export class PostgresStorage implements IStorage {
     };
   }
 
+  // comimot 1 
+
+  // commit 2
+
   async getClientByEmail(email: string): Promise<Client | undefined> {
     const res = await pool.query("SELECT * FROM clients WHERE email = $1", [email]);
     if (res.rows.length === 0) return undefined;
